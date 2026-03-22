@@ -2,7 +2,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import gsap from 'gsap';
 import { useEngineStore } from '../store/useEngineStore';
 import init, { PhysicsEngine } from '../../physics-engine/pkg/physics_engine';
 import { OrbitPathHelper } from './OrbitPathHelper';
@@ -11,22 +10,20 @@ export function SolarSystem() {
   const bodies = useEngineStore(state => state.bodies);
   const selectedBodyId = useEngineStore(state => state.selectedBodyId);
   const setSelectedBody = useEngineStore(state => state.setSelectedBody);
-  const isCameraTransitioning = useEngineStore(state => state.isCameraTransitioning);
-  const setCameraTransitioning = useEngineStore(state => state.setCameraTransitioning);
+  const systemVersion = useEngineStore(state => state.systemVersion); 
 
   const [engine, setEngine] = useState<PhysicsEngine | null>(null);
   const [wasmMemory, setWasmMemory] = useState<WebAssembly.Memory | null>(null);
   const [positionsView, setPositionsView] = useState<Float64Array | null>(null);
 
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const helperRefs = useRef<(THREE.Group | null)[]>([]);
-  // 记录上一次同步给 WASM 的实体数量，避免重复添加
-  const syncedCountRef = useRef(0);
+  const helperRefs = useRef<(THREE.Group | null)[]>([]); 
 
-  // 用于记录上一帧目标的位置，计算位移增量
+  // --- 极其核心的伴飞记忆变量 ---
   const prevTargetPos = useRef(new THREE.Vector3());
+  const virtualTarget = useRef(new THREE.Vector3()); // 摄像机真正盯住的“虚拟平滑点”
 
-  // 1. 只执行一次的初始化：加载 WASM 模块
+  // 1. 初始化引擎
   useEffect(() => {
     async function loadEngine() {
       const wasm = await init();
@@ -37,84 +34,46 @@ export function SolarSystem() {
     loadEngine();
   }, []);
 
-  // 监听 systemVersion，只要发生增删，立刻在 WASM 中重建物理树
-  const systemVersion = useEngineStore(state => state.systemVersion);
-
-  // 2. 动态同步核心逻辑：当 Zustand 里的 bodies 增加时，同步给 Rust
+  // 2. 监听数据增删，重建物理树
   useEffect(() => {
     if (!engine || !wasmMemory) return;
 
-    // 1. 清空引擎的旧内存
     engine.clear();
-
-    // 2. 建立【React ID】到【Rust 数组 Index】的映射表
     const idToRustIndex = new Map<number, number>();
 
-    // 3. 重新将当前存活的天体注入 WASM
     bodies.forEach(b => {
-      // 在 Rust 中找到它真正挂载的父节点 Index
       const rustParentIndex = b.parentId === -1 ? -1 : (idToRustIndex.get(b.parentId) ?? -1);
-
       const rustIdx = engine.add_body(b.MASS, b.SMA, b.ECC, b.INC, b.LAN, b.AOP, b.M0, rustParentIndex);
-
-      // 记录这个映射关系
       idToRustIndex.set(b.id, rustIdx);
     });
 
-    // 4. 重绑指针
     const ptr = engine.get_positions_ptr();
     const count = engine.get_bodies_count();
     setPositionsView(new Float64Array(wasmMemory.buffer, ptr, count * 3));
+    
+  }, [systemVersion, engine, wasmMemory]); 
 
-  }, [systemVersion, engine, wasmMemory]);
-
-  // 当用户点击切换目标时，重置上一帧位置，防止摄像机发生瞬移
+  // 3. 【状态机核心】：当用户切换星体时，只更新位移基准点，保留虚拟点不动！
   useEffect(() => {
-    if (selectedBodyId !== null && meshRefs.current[selectedBodyId] && window.SolarSimulatorControls) {
-      const controls = window.SolarSimulatorControls as any;
-      const targetMesh = meshRefs.current[selectedBodyId]!;
+    if (selectedBodyId !== null && meshRefs.current[selectedBodyId]) {
+      const newIdealTarget = meshRefs.current[selectedBodyId]!.position;
+      // 瞬间同步旧坐标基准，防止产生不合理的距离跳变
+      prevTargetPos.current.copy(newIdealTarget);
 
-      // 1. 开启过渡状态
-      setCameraTransitioning(true);
-
-      // 2. 创建一个临时的 dummy 对象，存放在内存中
-      const dummyTarget = new THREE.Vector3().copy(controls.target);
-
-      // 3. 呼叫 GSAP 进行缓动飞越
-      gsap.to(dummyTarget, {
-        x: targetMesh.position.x,
-        y: targetMesh.position.y,
-        z: targetMesh.position.z,
-        duration: 0.8, // 柔和的 0.8 秒飞越动画
-        ease: 'power2.out', // 使用标准的“减速”缓动公式，极具工业美感
-        onUpdate: () => {
-          // 在动画的每一帧，强行将摄像机焦点锁在 dummy 对象上
-          controls.target.copy(dummyTarget);
-          controls.update();
-        },
-        onComplete: () => {
-          // 4. 动画完成，关闭过渡状态
-          setCameraTransitioning(false);
-          // 销毁 dummy
-        }
-      });
-
-      // 更新上一帧位置基准
-      prevTargetPos.current.copy(targetMesh.position);
+      // 如果这是第一次点星体，给虚拟点一个初始位置
+      if (virtualTarget.current.lengthSq() === 0) {
+          virtualTarget.current.copy(newIdealTarget);
+      }
     }
   }, [selectedBodyId]);
 
+  // 4. 高频物理计算管线
   useFrame((state, delta) => {
     const { timeScale, isPaused } = useEngineStore.getState();
-
-    // 把 OrbitControls 挂载到全局，方便 useEffect 读取
-    if (!window.SolarSimulatorControls && state.controls) {
-      window.SolarSimulatorControls = state.controls;
-    }
-
+    
     if (engine && positionsView && !isPaused) {
       engine.update(delta * timeScale);
-
+      
       // 更新星体 Mesh
       bodies.forEach((_, i) => {
         const mesh = meshRefs.current[i];
@@ -134,21 +93,29 @@ export function SolarSystem() {
       });
     }
 
-    // 摄像机伴飞逻辑 (仅在非过渡状态下执行物理锁定)
-    if (selectedBodyId !== null && meshRefs.current[selectedBodyId] && !isCameraTransitioning) {
-      const targetPos = meshRefs.current[selectedBodyId]!.position;
-      const moveDelta = new THREE.Vector3().subVectors(targetPos, prevTargetPos.current);
+    // --- 完美的无缝伴飞算法 ---
+    if (selectedBodyId !== null && meshRefs.current[selectedBodyId]) {
+      const idealTarget = meshRefs.current[selectedBodyId]!.position;
 
-      // 位移严格同步叠加，防漂移
+      // 1. 获取星体在这一帧真实的物理位移距离 (继承绝对速度)
+      const moveDelta = new THREE.Vector3().subVectors(idealTarget, prevTargetPos.current);
+
+      // 2. 摄像机本体和“虚拟观察点”无条件叠加这个位移，保证和星体并排飞行
       state.camera.position.add(moveDelta);
+      virtualTarget.current.add(moveDelta);
 
+      // 3. 在“同速并排飞行”的前提下，柔和地闭合它们之间的坐标差距 (这就是丝滑切换的秘密)
+      virtualTarget.current.lerp(idealTarget, 0.1);
+
+      // 4. 聚焦给虚拟点
       if (state.controls) {
-        const controls = state.controls as any;
-        // 物理坐标硬核强转，严丝合缝
-        controls.target.copy(targetPos);
+        const controls = state.controls as any; 
+        controls.target.copy(virtualTarget.current); 
         controls.update();
       }
-      prevTargetPos.current.copy(targetPos);
+
+      // 5. 记录当前真实坐标，留给下一帧算位移
+      prevTargetPos.current.copy(idealTarget);
     }
   });
 
@@ -156,27 +123,26 @@ export function SolarSystem() {
     <group>
       <group>
         {bodies.map((data, i) => (
-          <mesh
-            key={data.id}
+          <mesh 
+            key={data.id} 
             ref={(el) => (meshRefs.current[i] = el)}
-            // --- 新增交互逻辑 ---
             onClick={(e) => {
-              e.stopPropagation(); // 防止点击穿透到背后的星体
+              e.stopPropagation();
               setSelectedBody(data.id);
             }}
             onPointerOver={(e) => {
               e.stopPropagation();
-              document.body.style.cursor = 'crosshair'; // 鼠标悬停变成瞄准星，极客感拉满
+              document.body.style.cursor = 'crosshair';
             }}
             onPointerOut={() => {
               document.body.style.cursor = 'default';
             }}
           >
-            <sphereGeometry args={[data.radius, 16, 16]} />
-            <meshStandardMaterial
-              color={data.color}
-              emissive={data.isStar ? data.color : '#000000'}
-              emissiveIntensity={data.isStar ? 0.5 : 0}
+            <sphereGeometry args={[data.radius, 64, 64]} />
+            <meshStandardMaterial 
+              color={data.color} 
+              emissive={data.isStar ? data.color : '#000000'} 
+              emissiveIntensity={data.isStar ? 0.5 : 0} 
             />
             {data.isStar && <pointLight intensity={2} distance={100} />}
           </mesh>
@@ -187,26 +153,18 @@ export function SolarSystem() {
   );
 }
 
-declare global {
-  interface Window {
-    SolarSimulatorControls: any;
-  }
-}
-
-// 动态 Helper 挂载器
+// 子组件保持最精简的状态
 function SolarSystemHelpers({ bodies, helperRefs }: { bodies: any[], helperRefs: React.MutableRefObject<(THREE.Group | null)[]> }) {
-  return (
-    <group>
-      {bodies.map((body, i) => {
-        // 中心恒星（没有 parent）不需要画轨道线
-        if (body.parentId === -1) return null;
-
-        return (
-          <group key={`helper-${body.id}`} ref={(el) => (helperRefs.current[i] = el)}>
-            <OrbitPathHelper SMA={body.SMA} ECC={body.ECC} INC={body.INC} LAN={body.LAN} AOP={body.AOP} color={body.color} />
-          </group>
-        );
-      })}
-    </group>
-  );
+    return (
+        <group>
+            {bodies.map((body, i) => {
+                if (body.parentId === -1) return null;
+                return (
+                    <group key={`helper-${body.id}`} ref={(el) => (helperRefs.current[i] = el)}>
+                        <OrbitPathHelper SMA={body.SMA} ECC={body.ECC} INC={body.INC} LAN={body.LAN} AOP={body.AOP} color={body.color} />
+                    </group>
+                );
+            })}
+        </group>
+    );
 }

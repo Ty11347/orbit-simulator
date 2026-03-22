@@ -1,22 +1,76 @@
 // src/App.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Stars } from '@react-three/drei';
+import { OrbitControls, Stars, Stats } from '@react-three/drei';
 import { SolarSystem } from './components/SolarSystem';
 import { useEngineStore, TIME_TIERS } from './store/useEngineStore';
 import './App.css';
 
-// --- 新建实体弹窗面板 ---
-function AddEntityModal() {
+function useNativeDrag(active: any) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    // 只允许通过标题栏拖拽
+    const handle = panel.querySelector('.drag-handle') as HTMLElement;
+    if (!handle) return;
+
+    let isDragging = false;
+    let currentX = 0, currentY = 0;
+    let initialMouseX = 0, initialMouseY = 0;
+
+    const onMouseDown = (e: MouseEvent) => {
+      isDragging = true;
+      initialMouseX = e.clientX;
+      initialMouseY = e.clientY;
+      document.body.style.userSelect = 'none'; // 拖拽时防误触选中
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      const dx = e.clientX - initialMouseX;
+      const dy = e.clientY - initialMouseY;
+      // 直接修改底层 DOM 样式，绕过 React 渲染！
+      panel.style.transform = `translate(${currentX + dx}px, ${currentY + dy}px)`;
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!isDragging) return;
+      isDragging = false;
+      currentX += e.clientX - initialMouseX;
+      currentY += e.clientY - initialMouseY;
+      document.body.style.userSelect = '';
+    };
+
+    handle.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      handle.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [active]);
+
+  return panelRef;
+}
+
+// --- 可拖拽的新建实体浮窗 ---
+function AddEntityWindow() {
   const { isAddModalOpen, setAddModalOpen, addBody, bodies } = useEngineStore();
-  
+  const panelRef = useNativeDrag(isAddModalOpen);
+
   const [name, setName] = useState('新探测器');
   const [type, setType] = useState<'PLANET' | 'SATELLITE' | 'VEHICLE'>('VEHICLE');
   const [parentId, setParentId] = useState(1);
-  const [SMA, setSMA] = useState(6);
-  const [ECC, setECC] = useState(0.5);
-  const [INC_deg, setINC_deg] = useState(45);
-  const [LAN_deg, setLAN_deg] = useState(0);
+  // 为了防止输入框被清空时引发 NaN 报错，这里统一使用字符串暂存状态
+  const [SMA, setSMA] = useState("6");
+  const [ECC, setECC] = useState("0.5");
+  const [INC_deg, setINC_deg] = useState("45");
+  const [LAN_deg, setLAN_deg] = useState("0");
 
   if (!isAddModalOpen) return null;
 
@@ -26,59 +80,113 @@ function AddEntityModal() {
       radius: type === 'VEHICLE' ? 0.05 : 0.3,
       color: type === 'VEHICLE' ? '#00ff88' : '#a855f7',
       MASS: type === 'VEHICLE' ? 0.01 : 10,
-      SMA, ECC, 
-      INC: INC_deg * (Math.PI / 180), 
-      LAN: LAN_deg * (Math.PI / 180),
+      SMA: parseFloat(SMA) || 0.1, // 安全回退，避免导致黑屏
+      ECC: parseFloat(ECC) || 0,
+      INC: (parseFloat(INC_deg) || 0) * (Math.PI / 180),
+      LAN: (parseFloat(LAN_deg) || 0) * (Math.PI / 180),
       AOP: 0, M0: 0, parentId
     });
-    setAddModalOpen(false); // 发射后自动关闭
+    setAddModalOpen(false);
   };
 
   return (
-    <div className="add-modal-overlay">
-      <div className="add-modal">
-        <div className="modal-header">
-          <h3>🚀 航天发射与星体构建中心</h3>
-          <button className="close-btn" onClick={() => setAddModalOpen(false)}>✖</button>
-        </div>
-        <div className="modal-body">
-          <label>名称</label>
-          <input value={name} onChange={e => setName(e.target.value)} />
-
+    <div
+      ref={panelRef}
+      className="floating-panel"
+      style={{ position: 'absolute', top: 60, left: window.innerWidth - 260, zIndex: 100, width: 220 }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="drag-handle">
+        <span>构建空间实体</span>
+        <button className="close-btn" onClick={() => setAddModalOpen(false)}>✖</button>
+      </div>
+      <div className="compact-form">
+        <div className="form-row"><label>名称</label><input type="text" value={name} onChange={e => setName(e.target.value)} /></div>
+        <div className="form-row">
           <label>类型</label>
           <select value={type} onChange={e => setType(e.target.value as any)}>
-            <option value="VEHICLE">人造载具 (探测器/飞船)</option>
-            <option value="SATELLITE">天然卫星</option>
+            <option value="VEHICLE">载具</option>
+            <option value="SATELLITE">卫星</option>
             <option value="PLANET">行星</option>
           </select>
-          
-          <label>环绕目标 (引力参考系)</label>
+        </div>
+        <div className="form-row">
+          <label>参考系</label>
           <select value={parentId} onChange={e => setParentId(Number(e.target.value))}>
             {bodies.map(b => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
+        </div>
+        <div className="form-row"><label>半长轴(SMA)</label><input type="number" step="0.1" value={SMA} onChange={e => setSMA(e.target.value)} /></div>
+        <div className="form-row"><label>偏心率(ECC)</label><input type="number" step="0.01" value={ECC} onChange={e => setECC(e.target.value)} /></div>
+        <div className="form-row"><label>倾角(INC)°</label><input type="number" step="1" value={INC_deg} onChange={e => setINC_deg(e.target.value)} /></div>
+        <div className="form-row"><label>升交点(LAN)°</label><input type="number" step="1" value={LAN_deg} onChange={e => setLAN_deg(e.target.value)} /></div>
+        <button className="launch-btn" onClick={handleAdd}>点火入轨</button>
+      </div>
+    </div>
+  );
+}
 
-          <label>半长轴 (SMA): {SMA.toFixed(1)}</label>
-          <input type="range" min="0.5" max="50" step="0.1" value={SMA} onChange={e => setSMA(parseFloat(e.target.value))} />
+// --- 可拖拽的右侧详细数据面板 ---
+function DetailPanelWindow() {
+  const { selectedBodyId, bodies, setSelectedBody } = useEngineStore();
 
-          <label>偏心率 (ECC): {ECC.toFixed(2)}</label>
-          <input type="range" min="0" max="0.9" step="0.01" value={ECC} onChange={e => setECC(parseFloat(e.target.value))} />
+  const panelRef = useNativeDrag(selectedBodyId);
 
-          <label>轨道倾角 (INC): {INC_deg}°</label>
-          <input type="range" min="0" max="180" step="1" value={INC_deg} onChange={e => setINC_deg(parseFloat(e.target.value))} />
-          
-          <button className="launch-btn" onClick={handleAdd}>点火发射入轨</button>
+  if (selectedBodyId === null) return null;
+  const selectedBody = bodies.find(b => b.id === selectedBodyId);
+  if (!selectedBody) return null;
+
+  const parentBody = bodies.find(b => b.id === selectedBody.parentId);
+  let periodStr = "N/A";
+  let heightStr = "N/A";
+
+  // 安全计算物理属性，防止引发黑屏
+  if (parentBody) {
+    const mu = parentBody.MASS * 1.0;
+    if (mu > 0 && selectedBody.SMA > 0) {
+      const T = 2 * Math.PI * Math.sqrt(Math.pow(selectedBody.SMA, 3) / mu);
+      periodStr = T.toFixed(2) + " t";
+    }
+    const h = selectedBody.SMA - parentBody.radius;
+    heightStr = h > 0 ? h.toFixed(2) + " m" : "贴地/相交";
+  } else {
+    periodStr = "中心天体(静止)";
+  }
+
+  return (
+    <div
+      ref={panelRef}
+      className="floating-panel detail-panel"
+      style={{ position: 'absolute', top: 350, left: window.innerWidth - 260, zIndex: 90 }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div>
+        <div className="drag-handle">
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span className="item-color" style={{ backgroundColor: selectedBody.color, display: 'inline-block' }}></span>
+            遥测 - {selectedBody.name}
+          </span>
+          <button className="close-btn" onClick={() => setSelectedBody(null)}>✖</button>
+        </div>
+        <div className="compact-form" style={{ padding: '10px 15px' }}>
+          <div className="data-row"><span className="key">质量 (MASS)</span><span className="val">{selectedBody.MASS.toFixed(2)} kg</span></div>
+          <div className="data-row"><span className="key">半长轴 (SMA)</span><span className="val">{selectedBody.SMA.toFixed(2)} m</span></div>
+          <div className="data-row"><span className="key">轨道高度</span><span className="val">{heightStr}</span></div>
+          <div className="data-row"><span className="key">偏心率 (ECC)</span><span className="val">{selectedBody.ECC.toFixed(3)}</span></div>
+          <div className="data-row"><span className="key">轨道周期 (T)</span><span className="val">{periodStr}</span></div>
         </div>
       </div>
     </div>
   );
 }
 
-// --- 左侧列表面板 ---
+// --- 紧凑版左侧边栏 ---
 function SidebarPanel() {
   const { bodies, deleteBody, selectedBodyId, setSelectedBody, setAddModalOpen } = useEngineStore();
   const [activeTab, setActiveTab] = useState<'ENTITIES' | 'VEHICLES'>('ENTITIES');
+  const [isCollapsed, setIsCollapsed] = useState(false); // 收起状态
 
   const displayList = bodies.filter(b => {
     if (activeTab === 'ENTITIES') return b.type !== 'VEHICLE';
@@ -87,89 +195,84 @@ function SidebarPanel() {
   });
 
   return (
-    <div className="sidebar-panel">
-      <h1 className="panel-title">任务控制中心</h1>
-
-      <div className="tabs-header">
-        <button className={`tab-btn ${activeTab === 'ENTITIES' ? 'active' : ''}`} onClick={() => setActiveTab('ENTITIES')}>天体</button>
-        <button className={`tab-btn ${activeTab === 'VEHICLES' ? 'active' : ''}`} onClick={() => setActiveTab('VEHICLES')}>载具</button>
-      </div>
-
-      <div className="list-container">
-        {displayList.length === 0 && <p className="empty-text">当前分类暂无数据</p>}
-        {displayList.map(body => (
-          <div 
-            key={body.id} 
-            className={`list-item ${selectedBodyId === body.id ? 'selected' : ''}`}
-            onClick={() => setSelectedBody(body.id)}
-          >
-            <div className="item-info">
-              <span className="item-color" style={{ backgroundColor: body.color }}></span>
-              <span className="item-name">{body.name}</span>
+    <div className="sidebar-container">
+      <div className={`floating-panel sidebar-panel ${isCollapsed ? 'collapsed' : ''}`}>
+        <div className="tabs-header">
+          <button className={`tab-btn ${activeTab === 'ENTITIES' ? 'active' : ''}`} onClick={() => setActiveTab('ENTITIES')}>天体</button>
+          <button className={`tab-btn ${activeTab === 'VEHICLES' ? 'active' : ''}`} onClick={() => setActiveTab('VEHICLES')}>载具</button>
+        </div>
+        <div className="list-container">
+          {displayList.length === 0 && <p className="empty-text">无数据</p>}
+          {displayList.map(body => (
+            <div
+              key={body.id}
+              className={`list-item ${selectedBodyId === body.id ? 'selected' : ''}`}
+              onClick={() => setSelectedBody(body.id)}
+            >
+              <div className="item-info">
+                <span className="item-color" style={{ backgroundColor: body.color }}></span>
+                <span className="item-name">{body.name}</span>
+              </div>
+              {body.id !== 0 && (
+                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); deleteBody(body.id); }}>销毁</button>
+              )}
             </div>
-            {body.id !== 0 && (
-              <button className="delete-btn" onClick={(e) => { e.stopPropagation(); deleteBody(body.id); }}>销毁</button>
-            )}
-          </div>
-        ))}
+          ))}
+          {/* 小号加号按钮 */}
+          <button className="add-mini-btn" onClick={() => setAddModalOpen(true)}>+</button>
+        </div>
       </div>
-
-      <button className="add-entity-btn" onClick={() => setAddModalOpen(true)}>＋ 注入新实体</button>
+      {/* 收起/展开把手 */}
+      <button
+        className={`toggle-sidebar-btn ${isCollapsed ? 'collapsed' : ''}`}
+        onClick={() => setIsCollapsed(!isCollapsed)}
+      >
+        {isCollapsed ? '⟩' : '⟨'}
+      </button>
     </div>
   );
 }
 
-// --- KSP 风格独立时间控制条 ---
+// --- 时间控制条 (逻辑未变，只是被移到了左上角) ---
 function TimeControlBar() {
   const { timeScale, timeTierIndex, isPaused, togglePause, setTimeTierIndex, setCustomTimeScale } = useEngineStore();
   const [inputValue, setInputValue] = useState(timeScale.toString());
 
-  // 同步外部状态到输入框
   useEffect(() => {
     setInputValue(timeScale.toString());
   }, [timeScale]);
 
-  // 处理极其严苛的格式化规则
   const handleScaleSubmit = () => {
     let val = parseFloat(inputValue);
-    if (isNaN(val) || val < 0) val = 1; // 非法输入重置为 1
+    if (isNaN(val) || val < 0) val = 1;
 
-    if (val >= 10) {
-      val = Math.round(val); // 大于 10，四舍五入到整数
-    } else {
-      val = Math.round(val * 10) / 10; // 小于 10，四舍五入到一位小数
-    }
+    if (val >= 10) val = Math.round(val);
+    else val = Math.round(val * 10) / 10;
 
     setInputValue(val.toString());
-    
-    // 如果碰巧等于某个默认档位，点亮对应的三角形；否则全灭
+
     const matchedIndex = TIME_TIERS.indexOf(val);
-    if (matchedIndex !== -1) {
-      setTimeTierIndex(matchedIndex);
-    } else {
-      setCustomTimeScale(val);
-    }
+    if (matchedIndex !== -1) setTimeTierIndex(matchedIndex);
+    else setCustomTimeScale(val);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.currentTarget.blur(); // 触发 onBlur 的提交逻辑
-    }
+    if (e.key === 'Enter') e.currentTarget.blur();
   };
 
   return (
-    <div className="ksp-time-bar">
+    <div className="ksp-time-bar floating-panel" style={{ flexDirection: 'row' }}>
       <button className={`play-pause-square ${isPaused ? 'paused' : 'playing'}`} onClick={togglePause}>
         {isPaused ? '▶' : '⏸'}
       </button>
-      
+
       <div className="warp-triangles">
         {TIME_TIERS.map((tier, idx) => (
-          <div 
-            key={idx} 
-            className={`ksp-triangle ${idx <= timeTierIndex && !isPaused ? 'active' : ''}`} 
+          <div
+            key={idx}
+            className={`ksp-triangle ${idx <= timeTierIndex && !isPaused ? 'active' : ''}`}
             onClick={() => {
-              if (isPaused) togglePause(); // 如果在暂停时点击档位，自动播放
+              if (isPaused) togglePause();
               setTimeTierIndex(idx);
             }}
             title={`${tier}x`}
@@ -179,18 +282,13 @@ function TimeControlBar() {
 
       <div className="time-input-wrapper">
         <span className="time-x">T: </span>
-        <input 
-          type="text" 
+        <input
+          type="text"
           className="time-scale-input"
           value={inputValue}
-          maxLength={8} // 限制最大输入长度，防止破坏 UI
           onChange={(e) => {
             let val = e.target.value.replace(/[^0-9.]/g, '');
-            // 只允许输入数字和小数点
-            if (val.length > 8) {
-              val = val.slice(0, 8);
-            }
-            
+            if (val.length > 8) val = val.slice(0, 8);
             setInputValue(val);
           }}
           onBlur={handleScaleSubmit}
@@ -205,11 +303,13 @@ function TimeControlBar() {
 function App() {
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#050505' }}>
-      <SidebarPanel />
       <TimeControlBar />
-      <AddEntityModal />
-      
+      <SidebarPanel />
+      <AddEntityWindow />
+      <DetailPanelWindow />
+
       <Canvas camera={{ position: [0, 10, 20], fov: 45 }}>
+        <Stats className="perf-radar" />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
