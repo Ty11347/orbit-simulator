@@ -252,3 +252,82 @@ input[type="number"] {
   left: 15px !important;
   z-index: 100 !important;
 }
+
+.settings-panel {
+  background-color: #0f141e !important; /* 强制深灰不透明底色 */
+  width: 340px;
+  border-radius: 6px;
+  padding-bottom: 20px;
+}
+
+/* Mac 风格红色关闭圆点 */
+.mac-close-dot {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  background-color: #ff5f56; 
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1px solid #e0443e;
+  z-index: 100;
+}
+.mac-close-dot:hover { background-color: #ff746d; }
+
+/* 隐形拖拽头部：覆盖原有 drag-handle，使其透明无文字，但保留拖拽功能 */
+.settings-panel .drag-handle {
+  background: transparent;
+  border-bottom: none;
+  height: 35px;
+  padding: 0;
+}
+
+/* 分类标题 (居中，白色) */
+.settings-category-title {
+  text-align: center;
+  font-size: 15px;
+  font-weight: normal;
+  color: #fff;
+  margin: 10px 0 15px 0;
+  letter-spacing: 1px;
+}
+
+/* 分隔线 */
+.settings-divider {
+  height: 1px;
+  background-color: #2a3441;
+  margin: 20px 25px;
+}
+
+/* 左右排版的设置项 */
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 35px; /* 控制左右边距 */
+  margin-bottom: 10px;
+}
+.settings-row .label {
+  color: #a0aab5;
+  font-size: 12px;
+}
+.settings-row .control {
+  width: 130px; /* 固定右侧下拉框宽度 */
+}
+.settings-row select {
+  width: 100%;
+  background: #151a22; /* 极暗的输入框背景 */
+  border: 1px solid #2a3441;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.settings-row select:focus {
+  border-color: #4da8da;
+}

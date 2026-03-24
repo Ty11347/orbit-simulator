@@ -1,6 +1,6 @@
 [
-  { "id": 0, "name": "太阳", "type": "STAR", "radius": 1.5, "color": "#ffcc00", "MASS": 10000, "SMA": 0, "ECC": 0, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": -1, "isStar": true },
-  { "id": 1, "name": "地球", "type": "PLANET", "radius": 0.5, "color": "#2b52ff", "MASS": 100, "SMA": 25, "ECC": 0.1, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 0 },
-  { "id": 2, "name": "月球", "type": "SATELLITE", "radius": 0.2, "color": "#cccccc", "MASS": 1, "SMA": 4, "ECC": 0.05, "INC": 0.2, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 1 },
-  { "id": 3, "name": "极地探测器", "type": "VEHICLE", "radius": 0.05, "color": "#ff2b2b", "MASS": 0.01, "SMA": 1.2, "ECC": 0, "INC": 1.57, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 2 }
+  { "id": 0, "name": "Sun", "type": "STAR", "radius": 1.5, "color": "#ffcc00", "MASS": 10000, "SMA": 0, "ECC": 0, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": -1, "isStar": true },
+  { "id": 1, "name": "Earth", "type": "PLANET", "radius": 0.5, "color": "#2b52ff", "MASS": 100, "SMA": 25, "ECC": 0.1, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 0 },
+  { "id": 2, "name": "Moon", "type": "SATELLITE", "radius": 0.2, "color": "#cccccc", "MASS": 1, "SMA": 4, "ECC": 0.05, "INC": 0.2, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 1 },
+  { "id": 3, "name": "Polar Probe", "type": "VEHICLE", "radius": 0.05, "color": "#ff2b2b", "MASS": 0.01, "SMA": 1.2, "ECC": 0, "INC": 1.57, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 2 }
 ]

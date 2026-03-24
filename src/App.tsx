@@ -4,7 +4,9 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, Stats } from '@react-three/drei';
 import { SolarSystem } from './components/SolarSystem';
 import { useEngineStore, TIME_TIERS } from './store/useEngineStore';
+import { useTranslation, AVAILABLE_LANGUAGES } from './hooks/useTranslation';
 import './App.css';
+
 
 const rawDataModules = import.meta.glob('./data/*.json', { eager: true });
 const AVAILABLE_SYSTEMS: Record<string, any> = {};
@@ -14,6 +16,72 @@ Object.keys(rawDataModules).forEach((path) => {
   const fileName = path.split('/').pop()?.replace('.json', '') || 'unknown';
   AVAILABLE_SYSTEMS[fileName] = (rawDataModules[path] as any).default;
 });
+
+// --- 全新的设置窗口组件 (SettingsWindow) ---
+function SettingsWindow() {
+  const { t, language } = useTranslation();
+  const { isSettingsWindowOpen, setSettingsWindowOpen, loadSystem, setLanguage } = useEngineStore();
+  
+  const panelRef = useNativeDrag(isSettingsWindowOpen);
+
+  if (!isSettingsWindowOpen) return null;
+
+  return (
+    <div 
+      ref={panelRef} 
+      className="floating-panel settings-panel" 
+      style={{ 
+        position: 'absolute', zIndex: 110,
+        top: '60px', left: window.innerWidth - 380
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {/* Mac 风格红色关闭按钮 (右上角) */}
+      <div 
+        className="mac-close-dot" 
+        onClick={() => setSettingsWindowOpen(false)}
+      />
+
+      {/* 隐形拖拽区 (必须保留 drag-handle 类名供 Hook 抓取) */}
+      <div className="drag-handle"></div>
+
+      {/* === 系统与数据配置 === */}
+      <div className="settings-category-title">{t('ui.settings.section.system')}</div>
+
+      <div className="settings-row">
+        <div className="label">{t('ui.settings.config.load')}</div>
+        <div className="control">
+          <select onChange={(e) => { loadSystem(AVAILABLE_SYSTEMS[e.target.value]); e.target.blur(); }}>
+            {Object.keys(AVAILABLE_SYSTEMS).map((systemName) => (
+              <option key={systemName} value={systemName}>{systemName}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* 分隔横线 */}
+      <div className="settings-divider"></div>
+
+      {/* === 界面与语言 === */}
+      <div className="settings-category-title">{t('ui.settings.section.interface')}</div>
+
+      <div className="settings-row">
+        <div className="label">{t('ui.settings.lang')}</div>
+        <div className="control">
+          <select 
+            value={language}
+            onChange={(e) => { setLanguage(e.target.value); e.target.blur(); }}
+          >
+            {AVAILABLE_LANGUAGES.map(lang => (
+              <option key={lang} value={lang}>{lang}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      
+    </div>
+  );
+}
 
 function useNativeDrag(active: any) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -70,9 +138,10 @@ function useNativeDrag(active: any) {
 // --- 可拖拽的新建实体浮窗 ---
 function AddEntityWindow() {
   const { isAddModalOpen, setAddModalOpen, addBody, bodies } = useEngineStore();
+  const { t } = useTranslation();
   const panelRef = useNativeDrag(isAddModalOpen);
 
-  const [name, setName] = useState('新探测器');
+  const [name, setName] = useState('');
   const [type, setType] = useState<'PLANET' | 'SATELLITE' | 'VEHICLE'>('VEHICLE');
   const [parentId, setParentId] = useState(1);
   // 为了防止输入框被清空时引发 NaN 报错，这里统一使用字符串暂存状态
@@ -85,7 +154,8 @@ function AddEntityWindow() {
 
   const handleAdd = () => {
     addBody({
-      name, type,
+      name: name.trim() || 'New Probe',
+      type,
       radius: type === 'VEHICLE' ? 0.05 : 0.3,
       color: type === 'VEHICLE' ? '#00ff88' : '#a855f7',
       MASS: type === 'VEHICLE' ? 0.01 : 10,
@@ -95,6 +165,7 @@ function AddEntityWindow() {
       LAN: (parseFloat(LAN_deg) || 0) * (Math.PI / 180),
       AOP: 0, M0: 0, parentId
     });
+    setName('');
     setAddModalOpen(false);
   };
 
@@ -106,32 +177,30 @@ function AddEntityWindow() {
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="drag-handle">
-        <span>构建空间实体</span>
+        <span>{t('ui.addEntity')}</span>
         <button className="close-btn" onClick={() => setAddModalOpen(false)}>✖</button>
       </div>
       <div className="compact-form">
-        <div className="form-row"><label>名称</label><input type="text" value={name} onChange={e => setName(e.target.value)} /></div>
+        <div className="form-row"><label>{t('ui.name')}</label><input type="text" value={name} placeholder={t('ui.defaultProbeName')} onChange={e => setName(e.target.value)} /></div>
         <div className="form-row">
-          <label>类型</label>
+          <label>{t('ui.type')}</label>
           <select value={type} onChange={e => setType(e.target.value as any)}>
-            <option value="VEHICLE">载具</option>
-            <option value="SATELLITE">卫星</option>
-            <option value="PLANET">行星</option>
+            <option value="VEHICLE">{t('ui.type.vehicle')}</option>
+            <option value="SATELLITE">{t('ui.type.satellite')}</option>
+            <option value="PLANET">{t('ui.type.planet')}</option>
           </select>
         </div>
         <div className="form-row">
-          <label>参考系</label>
+          <label>{t('ui.reference')}</label>
           <select value={parentId} onChange={e => setParentId(Number(e.target.value))}>
-            {bodies.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
+            {bodies.map(b => <option key={b.id} value={b.id}>{t(b.name)}</option>)}
           </select>
         </div>
-        <div className="form-row"><label>半长轴(SMA)</label><input type="number" step="0.1" value={SMA} onChange={e => setSMA(e.target.value)} /></div>
-        <div className="form-row"><label>偏心率(ECC)</label><input type="number" step="0.01" value={ECC} onChange={e => setECC(e.target.value)} /></div>
-        <div className="form-row"><label>倾角(INC)°</label><input type="number" step="1" value={INC_deg} onChange={e => setINC_deg(e.target.value)} /></div>
-        <div className="form-row"><label>升交点(LAN)°</label><input type="number" step="1" value={LAN_deg} onChange={e => setLAN_deg(e.target.value)} /></div>
-        <button className="launch-btn" onClick={handleAdd}>点火入轨</button>
+        <div className="form-row"><label>{t('ui.sma')}</label><input type="number" step="0.1" value={SMA} onChange={e => setSMA(e.target.value)} /></div>
+        <div className="form-row"><label>{t('ui.ecc')}</label><input type="number" step="0.01" value={ECC} onChange={e => setECC(e.target.value)} /></div>
+        <div className="form-row"><label>{t('ui.inc')}</label><input type="number" step="1" value={INC_deg} onChange={e => setINC_deg(e.target.value)} /></div>
+        <div className="form-row"><label>{t('ui.lan')}</label><input type="number" step="1" value={LAN_deg} onChange={e => setLAN_deg(e.target.value)} /></div>
+        <button className="launch-btn" onClick={handleAdd}>{t('ui.launch')}</button>
       </div>
     </div>
   );
@@ -140,7 +209,7 @@ function AddEntityWindow() {
 // --- 可拖拽的右侧详细数据面板 ---
 function DetailPanelWindow() {
   const { selectedBodyId, bodies, setSelectedBody } = useEngineStore();
-
+  const { t } = useTranslation();
   const panelRef = useNativeDrag(selectedBodyId);
 
   if (selectedBodyId === null) return null;
@@ -159,9 +228,9 @@ function DetailPanelWindow() {
       periodStr = T.toFixed(2) + " t";
     }
     const h = selectedBody.SMA - parentBody.radius;
-    heightStr = h > 0 ? h.toFixed(2) + " m" : "贴地/相交";
+    heightStr = h > 0 ? h.toFixed(2) + " m" : t('ui.height.ground');
   } else {
-    periodStr = "中心天体(静止)";
+    periodStr = t('ui.height.center');
   }
 
   return (
@@ -175,16 +244,16 @@ function DetailPanelWindow() {
         <div className="drag-handle">
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span className="item-color" style={{ backgroundColor: selectedBody.color, display: 'inline-block' }}></span>
-            遥测 - {selectedBody.name}
+            {t('ui.telemetry')} - {t(selectedBody.name)}
           </span>
           <button className="close-btn" onClick={() => setSelectedBody(null)}>✖</button>
         </div>
         <div className="compact-form" style={{ padding: '10px 15px' }}>
-          <div className="data-row"><span className="key">质量 (MASS)</span><span className="val">{selectedBody.MASS.toFixed(2)} kg</span></div>
-          <div className="data-row"><span className="key">半长轴 (SMA)</span><span className="val">{selectedBody.SMA.toFixed(2)} m</span></div>
-          <div className="data-row"><span className="key">轨道高度</span><span className="val">{heightStr}</span></div>
-          <div className="data-row"><span className="key">偏心率 (ECC)</span><span className="val">{selectedBody.ECC.toFixed(3)}</span></div>
-          <div className="data-row"><span className="key">轨道周期 (T)</span><span className="val">{periodStr}</span></div>
+          <div className="data-row"><span className="key">{t('ui.mass')}</span><span className="val">{selectedBody.MASS.toFixed(2)} kg</span></div>
+          <div className="data-row"><span className="key">{t('ui.sma')}</span><span className="val">{selectedBody.SMA.toFixed(2)} m</span></div>
+          <div className="data-row"><span className="key">{t('ui.altitude')}</span><span className="val">{heightStr}</span></div>
+          <div className="data-row"><span className="key">{t('ui.ecc')}</span><span className="val">{selectedBody.ECC.toFixed(3)}</span></div>
+          <div className="data-row"><span className="key">{t('ui.period')}</span><span className="val">{periodStr}</span></div>
         </div>
       </div>
     </div>
@@ -193,7 +262,8 @@ function DetailPanelWindow() {
 
 // --- 紧凑版左侧边栏 ---
 function SidebarPanel() {
-  const { bodies, deleteBody, selectedBodyId, setSelectedBody, setAddModalOpen, loadSystem } = useEngineStore();
+  const { bodies, deleteBody, selectedBodyId, setSelectedBody, setAddModalOpen } = useEngineStore();
+  const { t, language } = useTranslation();
   const [activeTab, setActiveTab] = useState<'ENTITIES' | 'VEHICLES'>('ENTITIES');
   const [isCollapsed, setIsCollapsed] = useState(false); // 收起状态
 
@@ -206,55 +276,28 @@ function SidebarPanel() {
   return (
     <div className="sidebar-container">
       <div className={`floating-panel sidebar-panel ${isCollapsed ? 'collapsed' : ''}`}>
-        <div style={{ padding: '8px', borderBottom: '1px solid rgba(77, 168, 218, 0.3)', background: 'rgba(0,0,0,0.3)' }}>
-          <select
-            onChange={(e) => {
-              loadSystem(AVAILABLE_SYSTEMS[e.target.value]);
-              e.target.blur();
-            }}
-            style={{
-              width: '100%', background: '#0f141e', color: '#00ff88',
-              border: '1px solid #334155', padding: '4px',
-              fontFamily: 'Courier New, monospace', fontSize: '11px', outline: 'none'
-            }}
-          >
-            {Object.keys(AVAILABLE_SYSTEMS).map((systemName) => (
-              <option key={systemName} value={systemName}>
-                载入: {systemName}
-              </option>
-            ))}
-          </select>
-        </div>
+
         <div className="tabs-header">
-          <button className={`tab-btn ${activeTab === 'ENTITIES' ? 'active' : ''}`} onClick={() => setActiveTab('ENTITIES')}>天体</button>
-          <button className={`tab-btn ${activeTab === 'VEHICLES' ? 'active' : ''}`} onClick={() => setActiveTab('VEHICLES')}>载具</button>
+          <button className={`tab-btn ${activeTab === 'ENTITIES' ? 'active' : ''}`} onClick={() => setActiveTab('ENTITIES')}>{t('ui.tab.entities')}</button>
+          <button className={`tab-btn ${activeTab === 'VEHICLES' ? 'active' : ''}`} onClick={() => setActiveTab('VEHICLES')}>{t('ui.tab.vehicles')}</button>
         </div>
         <div className="list-container">
-          {displayList.length === 0 && <p className="empty-text">无数据</p>}
+          {displayList.length === 0 && <p className="empty-text">{t('ui.empty')}</p>}
           {displayList.map(body => (
-            <div
-              key={body.id}
-              className={`list-item ${selectedBodyId === body.id ? 'selected' : ''}`}
-              onClick={() => setSelectedBody(body.id)}
-            >
+            <div key={body.id} className={`list-item ${selectedBodyId === body.id ? 'selected' : ''}`} onClick={() => setSelectedBody(body.id)}>
               <div className="item-info">
                 <span className="item-color" style={{ backgroundColor: body.color }}></span>
-                <span className="item-name">{body.name}</span>
+                <span className="item-name">{t(body.name)}</span>
               </div>
               {body.id !== 0 && (
-                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); deleteBody(body.id); }}>销毁</button>
+                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); deleteBody(body.id); }}>{t('ui.destroy')}</button>
               )}
             </div>
           ))}
-          {/* 小号加号按钮 */}
           <button className="add-mini-btn" onClick={() => setAddModalOpen(true)}>+</button>
         </div>
       </div>
-      {/* 收起/展开把手 */}
-      <button
-        className={`toggle-sidebar-btn ${isCollapsed ? 'collapsed' : ''}`}
-        onClick={() => setIsCollapsed(!isCollapsed)}
-      >
+      <button className={`toggle-sidebar-btn ${isCollapsed ? 'collapsed' : ''}`} onClick={() => setIsCollapsed(!isCollapsed)}>
         {isCollapsed ? '⟩' : '⟨'}
       </button>
     </div>
@@ -358,6 +401,8 @@ function useSpacebarToggle() {
 
 function App() {
   // 激活引擎级全局快捷键
+  const setSettingsWindowOpen = useEngineStore(state => state.setSettingsWindowOpen);
+
   useSpacebarToggle();
 
   return (
@@ -367,7 +412,27 @@ function App() {
       <AddEntityWindow />
       <DetailPanelWindow />
 
-      <Canvas camera={{ position: [0, 10, 20], fov: 45 }}>
+      <SettingsWindow />
+
+      <button
+        className="settings-toggle-btn"
+        onClick={() => setSettingsWindowOpen(true)}
+        style={{
+          position: 'absolute',
+          top: '20px', right: '20px', zIndex: 100, // 位于所有窗口上方
+          background: 'rgba(0,0,0,0.5)',
+          color: '#fff', border: '1px solid rgba(77, 168, 218, 0.3)',
+          width: '32px', height: '32px', cursor: 'pointer', outline: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '16px', transition: 'all 0.2s'
+        }}
+        onMouseOver={(e) => e.currentTarget.style.background = '#4da8da'}
+        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
+      >
+        ⚙
+      </button>
+
+      <Canvas camera={{ position: [0, 10, 20], fov: 45 }} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
         <Stats className="perf-radar" />
         <ambientLight intensity={0.5} />
         <pointLight position={[10, 10, 10]} intensity={1} />

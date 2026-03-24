@@ -35,15 +35,14 @@ interface EngineState {
   timeTierIndex: number; 
   timeScale: number;     
   isPaused: boolean;
-
   bodies: CelestialBody[];
   nextId: number;        
   systemVersion: number; 
-
   selectedBodyId: number | null;
   isCameraTransitioning: boolean;
-
   isAddModalOpen: boolean;
+  language: string; 
+  isSettingsWindowOpen: boolean;
 
   setTimeTierIndex: (index: number) => void; 
   setCustomTimeScale: (scale: number) => void; 
@@ -53,9 +52,9 @@ interface EngineState {
   setSelectedBody: (id: number | null) => void;
   setCameraTransitioning: (status: boolean) => void;
   setAddModalOpen: (isOpen: boolean) => void; 
-  
-  // 【新增】：加载整个星系数据包
   loadSystem: (newBodies: CelestialBody[]) => void;
+  setLanguage: (lang: string) => void;
+  setSettingsWindowOpen: (isOpen: boolean) => void;
 }
 
 export const useEngineStore = create<EngineState>((set) => ({
@@ -71,6 +70,8 @@ export const useEngineStore = create<EngineState>((set) => ({
   selectedBodyId: null,
   isCameraTransitioning: false,
   isAddModalOpen: false,
+  language: 'zh',
+  isSettingsWindowOpen: false,
 
   setTimeTierIndex: (index) => set({
     timeTierIndex: index,
@@ -81,6 +82,7 @@ export const useEngineStore = create<EngineState>((set) => ({
     timeScale: scale,
     timeTierIndex: -1 
   }),
+  setLanguage: (lang) => set({ language: lang }),
 
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
 
@@ -89,6 +91,8 @@ export const useEngineStore = create<EngineState>((set) => ({
     nextId: state.nextId + 1,
     systemVersion: state.systemVersion + 1
   })),
+
+  setSettingsWindowOpen: (isOpen) => set({ isSettingsWindowOpen: isOpen }),
 
   deleteBody: (targetId) => set((state) => {
     if (targetId === 0) return state; 
