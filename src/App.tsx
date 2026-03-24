@@ -6,6 +6,15 @@ import { SolarSystem } from './components/SolarSystem';
 import { useEngineStore, TIME_TIERS } from './store/useEngineStore';
 import './App.css';
 
+const rawDataModules = import.meta.glob('./data/*.json', { eager: true });
+const AVAILABLE_SYSTEMS: Record<string, any> = {};
+
+Object.keys(rawDataModules).forEach((path) => {
+  // 从 "./data/solar_system.json" 中提取出 "solar_system" 作为 key
+  const fileName = path.split('/').pop()?.replace('.json', '') || 'unknown';
+  AVAILABLE_SYSTEMS[fileName] = (rawDataModules[path] as any).default;
+});
+
 function useNativeDrag(active: any) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -184,7 +193,7 @@ function DetailPanelWindow() {
 
 // --- 紧凑版左侧边栏 ---
 function SidebarPanel() {
-  const { bodies, deleteBody, selectedBodyId, setSelectedBody, setAddModalOpen } = useEngineStore();
+  const { bodies, deleteBody, selectedBodyId, setSelectedBody, setAddModalOpen, loadSystem } = useEngineStore();
   const [activeTab, setActiveTab] = useState<'ENTITIES' | 'VEHICLES'>('ENTITIES');
   const [isCollapsed, setIsCollapsed] = useState(false); // 收起状态
 
@@ -197,6 +206,25 @@ function SidebarPanel() {
   return (
     <div className="sidebar-container">
       <div className={`floating-panel sidebar-panel ${isCollapsed ? 'collapsed' : ''}`}>
+        <div style={{ padding: '8px', borderBottom: '1px solid rgba(77, 168, 218, 0.3)', background: 'rgba(0,0,0,0.3)' }}>
+          <select
+            onChange={(e) => {
+              loadSystem(AVAILABLE_SYSTEMS[e.target.value]);
+              e.target.blur();
+            }}
+            style={{
+              width: '100%', background: '#0f141e', color: '#00ff88',
+              border: '1px solid #334155', padding: '4px',
+              fontFamily: 'Courier New, monospace', fontSize: '11px', outline: 'none'
+            }}
+          >
+            {Object.keys(AVAILABLE_SYSTEMS).map((systemName) => (
+              <option key={systemName} value={systemName}>
+                载入: {systemName}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="tabs-header">
           <button className={`tab-btn ${activeTab === 'ENTITIES' ? 'active' : ''}`} onClick={() => setActiveTab('ENTITIES')}>天体</button>
           <button className={`tab-btn ${activeTab === 'VEHICLES' ? 'active' : ''}`} onClick={() => setActiveTab('VEHICLES')}>载具</button>
@@ -300,7 +328,38 @@ function TimeControlBar() {
   );
 }
 
+// --- 全局空格键监听器 (带有输入框防误触机制) ---
+function useSpacebarToggle() {
+  const togglePause = useEngineStore(state => state.togglePause);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        const activeTag = document.activeElement?.tagName;
+        // 如果玩家正在输入轨道参数，绝对不能拦截空格
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+          return;
+        }
+
+        e.preventDefault();
+
+        // 当前有任何 UI 元素（如下拉框）正霸占着焦点，强行一脚踢开
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+
+        togglePause();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePause]);
+}
+
 function App() {
+  // 激活引擎级全局快捷键
+  useSpacebarToggle();
+
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#050505' }}>
       <TimeControlBar />

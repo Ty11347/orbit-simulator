@@ -1,0 +1,6 @@
+[
+  { "id": 0, "name": "Kerbol", "type": "STAR", "radius": 1.5, "color": "#ffaa00", "MASS": 10000, "SMA": 0, "ECC": 0, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": -1, "isStar": true },
+  { "id": 1, "name": "Kerbin", "type": "PLANET", "radius": 0.5, "color": "#4da8da", "MASS": 100, "SMA": 25, "ECC": 0, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 0 },
+  { "id": 2, "name": "Mun", "type": "SATELLITE", "radius": 0.2, "color": "#888888", "MASS": 1, "SMA": 4, "ECC": 0, "INC": 0, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 1 },
+  { "id": 3, "name": "Minmus", "type": "SATELLITE", "radius": 0.1, "color": "#00ffcc", "MASS": 0.1, "SMA": 8, "ECC": 0.2, "INC": 0.1, "LAN": 0, "AOP": 0, "M0": 0, "parentId": 1 }
+]
