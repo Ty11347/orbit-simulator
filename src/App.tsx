@@ -21,29 +21,25 @@ Object.keys(rawDataModules).forEach((path) => {
 function SettingsWindow() {
   const { t, language } = useTranslation();
   const { isSettingsWindowOpen, setSettingsWindowOpen, loadSystem, setLanguage } = useEngineStore();
-  
+
   const panelRef = useNativeDrag(isSettingsWindowOpen);
 
   if (!isSettingsWindowOpen) return null;
 
   return (
-    <div 
-      ref={panelRef} 
-      className="floating-panel settings-panel" 
-      style={{ 
+    <div
+      ref={panelRef}
+      className="floating-panel settings-panel"
+      style={{
         position: 'absolute', zIndex: 110,
         top: '60px', left: window.innerWidth - 380
       }}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {/* Mac 风格红色关闭按钮 (右上角) */}
-      <div 
-        className="mac-close-dot" 
-        onClick={() => setSettingsWindowOpen(false)}
-      />
-
-      {/* 隐形拖拽区 (必须保留 drag-handle 类名供 Hook 抓取) */}
-      <div className="drag-handle"></div>
+      <div className="drag-handle" style={{ padding: '0 12px', justifyContent: 'flex-end' }}>
+        <button className="close-btn" onClick={() => setSettingsWindowOpen(false)} />
+      </div>
 
       {/* === 系统与数据配置 === */}
       <div className="settings-category-title">{t('ui.settings.section.system')}</div>
@@ -68,7 +64,7 @@ function SettingsWindow() {
       <div className="settings-row">
         <div className="label">{t('ui.settings.lang')}</div>
         <div className="control">
-          <select 
+          <select
             value={language}
             onChange={(e) => { setLanguage(e.target.value); e.target.blur(); }}
           >
@@ -78,7 +74,7 @@ function SettingsWindow() {
           </select>
         </div>
       </div>
-      
+
     </div>
   );
 }
@@ -178,7 +174,7 @@ function AddEntityWindow() {
     >
       <div className="drag-handle">
         <span>{t('ui.addEntity')}</span>
-        <button className="close-btn" onClick={() => setAddModalOpen(false)}>✖</button>
+        <button className="close-btn" onClick={() => setAddModalOpen(false)} />
       </div>
       <div className="compact-form">
         <div className="form-row"><label>{t('ui.name')}</label><input type="text" value={name} placeholder={t('ui.defaultProbeName')} onChange={e => setName(e.target.value)} /></div>
@@ -246,7 +242,7 @@ function DetailPanelWindow() {
             <span className="item-color" style={{ backgroundColor: selectedBody.color, display: 'inline-block' }}></span>
             {t('ui.telemetry')} - {t(selectedBody.name)}
           </span>
-          <button className="close-btn" onClick={() => setSelectedBody(null)}>✖</button>
+          <button className="close-btn" onClick={() => setSelectedBody(null)} />
         </div>
         <div className="compact-form" style={{ padding: '10px 15px' }}>
           <div className="data-row"><span className="key">{t('ui.mass')}</span><span className="val">{selectedBody.MASS.toFixed(2)} kg</span></div>
@@ -420,7 +416,7 @@ function App() {
         style={{
           position: 'absolute',
           top: '20px', right: '20px', zIndex: 100, // 位于所有窗口上方
-          background: 'rgba(0,0,0,0.5)',
+          background: 'rgba(0,0,0,0.5)', borderRadius: '4px',
           color: '#fff', border: '1px solid rgba(77, 168, 218, 0.3)',
           width: '32px', height: '32px', cursor: 'pointer', outline: 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',

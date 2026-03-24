@@ -42,10 +42,22 @@ html, body, #root {
 .drag-handle:active { cursor: grabbing; }
 
 .close-btn {
-  background: none; border: none; color: #888;
-  cursor: pointer; font-size: 0.9rem; line-height: 1;
+  width: 12px;
+  height: 12px;
+  background-color: #ff5f56;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1px solid #e0443e;
+  padding: 0;
+  color: transparent; /* 隐藏可能存在的文字 */
+  font-size: 0;
+  transition: background-color 0.2s;
+  outline: none;
+  flex-shrink: 0; /* 防止在标题过长时被挤压变形 */
 }
-.close-btn:hover { color: #ff2b2b; }
+.close-btn:hover {
+  background-color: #ff746d;
+}
 
 /* --- 顶部左侧：KSP 时间条 --- */
 .ksp-time-bar {
@@ -260,21 +272,6 @@ input[type="number"] {
   padding-bottom: 20px;
 }
 
-/* Mac 风格红色关闭圆点 */
-.mac-close-dot {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 12px;
-  height: 12px;
-  background-color: #ff5f56; 
-  border-radius: 50%;
-  cursor: pointer;
-  border: 1px solid #e0443e;
-  z-index: 100;
-}
-.mac-close-dot:hover { background-color: #ff746d; }
-
 /* 隐形拖拽头部：覆盖原有 drag-handle，使其透明无文字，但保留拖拽功能 */
 .settings-panel .drag-handle {
   background: transparent;
@@ -289,7 +286,7 @@ input[type="number"] {
   font-size: 15px;
   font-weight: normal;
   color: #fff;
-  margin: 10px 0 15px 0;
+  margin: 6px 0 6px 0;
   letter-spacing: 1px;
 }
 
@@ -297,7 +294,7 @@ input[type="number"] {
 .settings-divider {
   height: 1px;
   background-color: #2a3441;
-  margin: 20px 25px;
+  margin: 10px 20px;
 }
 
 /* 左右排版的设置项 */
