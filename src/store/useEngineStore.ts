@@ -27,6 +27,8 @@ export interface CelestialBody {
   AOP: number;   
   M0: number;    
   parentId: number; 
+  soiRadius: number;
+  isBurning?: boolean;
 }
 
 export const TIME_TIERS = [0.1, 1, 5, 50, 200, 1000, 10000, 100000, 1000000];
@@ -43,6 +45,8 @@ interface EngineState {
   isAddModalOpen: boolean;
   language: string; 
   isSettingsWindowOpen: boolean;
+  focusMode: 'JUMP' | 'TRACK';
+  
 
   setTimeTierIndex: (index: number) => void; 
   setCustomTimeScale: (scale: number) => void; 
@@ -55,6 +59,11 @@ interface EngineState {
   loadSystem: (newBodies: CelestialBody[]) => void;
   setLanguage: (lang: string) => void;
   setSettingsWindowOpen: (isOpen: boolean) => void;
+  toggleBurn: (id: number) => void;
+  setFocusMode: (mode: 'JUMP' | 'TRACK') => void;
+
+  engineData: { posPtr: number, velPtr: number, localVelPtr: number, parentPtr: number, count: number, memory: WebAssembly.Memory | null };
+  setEngineData: (data: { posPtr: number, velPtr: number, localVelPtr: number, parentPtr: number, count: number, memory: WebAssembly.Memory | null }) => void;
 }
 
 export const useEngineStore = create<EngineState>((set) => ({
@@ -72,6 +81,9 @@ export const useEngineStore = create<EngineState>((set) => ({
   isAddModalOpen: false,
   language: 'zh',
   isSettingsWindowOpen: false,
+  focusMode: 'JUMP',
+  setFocusMode: (mode) => set({ focusMode: mode }),
+  
 
   setTimeTierIndex: (index) => set({
     timeTierIndex: index,
@@ -86,8 +98,12 @@ export const useEngineStore = create<EngineState>((set) => ({
 
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
 
+  toggleBurn: (id) => set((state) => ({
+    bodies: state.bodies.map(b => b.id === id ? { ...b, isBurning: !b.isBurning } : b)
+  })),
+
   addBody: (bodyData) => set((state) => ({
-    bodies: [...state.bodies, { ...bodyData, id: state.nextId }],
+    bodies: [...state.bodies, { ...bodyData, id: state.nextId, soiRadius: bodyData.soiRadius || 0, isBurning: false }],
     nextId: state.nextId + 1,
     systemVersion: state.systemVersion + 1
   })),
@@ -125,4 +141,7 @@ export const useEngineStore = create<EngineState>((set) => ({
     nextId: Math.max(...newBodies.map(b => b.id), 0) + 1,
     systemVersion: state.systemVersion + 1
   })),
+
+  engineData: { posPtr: 0, velPtr: 0, localVelPtr: 0, parentPtr: 0, count: 0, memory: null },
+  setEngineData: (data) => set({ engineData: data }),
 }));
