@@ -1,3 +1,47 @@
+/* =========================================================
+   全局变量定义区 (Single Source of Truth)
+   ========================================================= */
+:root {
+  /* 背景颜色 */
+  --bg-main: #050505;
+  --bg-panel-glass: rgba(10, 15, 20, 0.95);
+  --bg-panel-solid: #0f141e;
+  --bg-input: rgba(0, 0, 0, 0.5);
+  --bg-tab-header: #080c10;
+
+  /* 强调色 (提供 RGB 变量以便于 rgba 透明度计算) */
+  --color-blue-rgb: 77, 168, 218;
+  --color-blue: #4da8da;
+  --color-blue-hover: #3c8ebd;
+
+  --color-green-rgb: 0, 255, 136;
+  --color-green: #00ff88;
+
+  --color-red: #ff5f56;
+  --color-red-hover: #ff746d;
+  --color-red-alert: #ff2b2b;
+
+  --color-orange: #ffaa00;
+
+  /* 文本颜色 */
+  --text-main: #ffffff;
+  --text-muted: #a0aab5;
+  --text-dark: #666666;
+
+  /* 边框与分割线颜色 */
+  --border-light: rgba(var(--color-blue-rgb), 0.3);
+  --border-dark: #334155;
+  --border-tab: #222222;
+  --divider-color: #2a3441;
+
+  /* 字体族 */
+  --font-main: 'Inter', sans-serif;
+  --font-mono: 'Courier New', Courier, monospace;
+}
+
+/* =========================================================
+   基础重置与浏览器修正
+   ========================================================= */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -8,15 +52,29 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #050505;
-  font-family: 'Inter', sans-serif;
-  color: #fff;
+  background-color: var(--bg-main);
+  font-family: var(--font-main);
+  color: var(--text-main);
 }
 
-/* --- 基础悬浮窗样式 --- */
+/* 隐藏 Number 类型的上下箭头 (Chrome, Safari, Edge, Opera) */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* 隐藏 Number 类型的上下箭头 (Firefox) */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* =========================================================
+   通用组件：悬浮面板与拖拽把手
+   ========================================================= */
 .floating-panel {
-  background: rgba(10, 15, 20, 0.95);
-  border: 1px solid rgba(77, 168, 218, 0.3);
+  background: var(--bg-panel-glass);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.8);
   display: flex;
@@ -25,120 +83,291 @@ html, body, #root {
   transition: none;
 }
 
-/* --- 拖拽把手区 --- */
 .drag-handle {
   padding: 6px 10px;
-  background: rgba(77, 168, 218, 0.15);
-  border-bottom: 1px solid rgba(77, 168, 218, 0.2);
+  background: rgba(var(--color-blue-rgb), 0.15);
+  border-bottom: 1px solid rgba(var(--color-blue-rgb), 0.2);
   font-size: 0.75rem;
   font-weight: bold;
-  color: #4da8da;
+  color: var(--color-blue);
   cursor: grab;
   display: flex;
   justify-content: space-between;
   align-items: center;
   user-select: none;
 }
-.drag-handle:active { cursor: grabbing; }
+
+.drag-handle:active {
+  cursor: grabbing;
+}
 
 .close-btn {
   width: 12px;
   height: 12px;
-  background-color: #ff5f56;
+  background-color: var(--color-red);
   border-radius: 50%;
   cursor: pointer;
   border: 1px solid #e0443e;
   padding: 0;
-  color: transparent; /* 隐藏可能存在的文字 */
+  color: transparent;
   font-size: 0;
   transition: background-color 0.2s;
   outline: none;
-  flex-shrink: 0; /* 防止在标题过长时被挤压变形 */
-}
-.close-btn:hover {
-  background-color: #ff746d;
+  flex-shrink: 0;
 }
 
-/* --- 顶部左侧：KSP 时间条 --- */
+.close-btn:hover {
+  background-color: var(--color-red-hover);
+}
+
+/* =========================================================
+   业务模块：顶部时间控制条
+   ========================================================= */
 .ksp-time-bar {
   position: absolute;
-  top: 15px; left: 15px;
+  top: 15px; 
+  left: 15px;
   z-index: 10;
-  display: flex; align-items: center;
-  padding: 4px 8px; gap: 10px;
-}
-.play-pause-square {
-  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
-  background: #1a222c; border: 1px solid #4da8da; color: #4da8da;
-  border-radius: 3px; cursor: pointer; font-size: 10px; transition: 0.2s;
-}
-.play-pause-square:hover { background: rgba(77, 168, 218, 0.2); }
-.play-pause-square.paused { border-color: #ffaa00; color: #ffaa00; }
-.warp-triangles { display: flex; gap: 4px; align-items: center; }
-.ksp-triangle {
-  width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent;
-  border-left: 10px solid #2a3441; cursor: pointer; transition: 0.1s;
-}
-.ksp-triangle:hover { border-left-color: #4da8da; }
-.ksp-triangle.active { border-left-color: #00ff88; filter: drop-shadow(0 0 3px #00ff88); }
-.time-input-wrapper { display: flex; align-items: center; background: #0f141e; border: 1px solid #334155; border-radius: 3px; padding: 1px 6px; }
-.time-x { color: #a0aab5; font-family: monospace; font-size: 0.75rem; }
-.time-scale-input {
-  background: transparent; border: none; color: #00ff88;
-  font-family: 'Courier New', Courier, monospace; font-size: 0.8rem; font-weight: 500;
-  text-align: right; width: 75px; outline: none; letter-spacing: 1px;
+  display: flex; 
+  align-items: center;
+  padding: 4px 8px; 
+  gap: 10px;
 }
 
-/* --- 左侧边栏 (可折叠) --- */
-.sidebar-container {
-  position: absolute; top: 60px; left: 15px;
-  display: flex; align-items: flex-start; z-index: 10; gap: 5px;
+.play-pause-square {
+  width: 24px; 
+  height: 24px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+  background: #1a222c; 
+  border: 1px solid var(--color-blue); 
+  color: var(--color-blue);
+  border-radius: 3px; 
+  cursor: pointer; 
+  font-size: 10px; 
+  transition: 0.2s;
 }
+
+.play-pause-square:hover {
+  background: rgba(var(--color-blue-rgb), 0.2);
+}
+
+.play-pause-square.paused {
+  border-color: var(--color-orange); 
+  color: var(--color-orange);
+}
+
+.warp-triangles {
+  display: flex; 
+  gap: 4px; 
+  align-items: center;
+}
+
+.ksp-triangle {
+  width: 0; 
+  height: 0; 
+  border-top: 6px solid transparent; 
+  border-bottom: 6px solid transparent;
+  border-left: 10px solid #2a3441; 
+  cursor: pointer; 
+  transition: 0.1s;
+}
+
+.ksp-triangle:hover {
+  border-left-color: var(--color-blue);
+}
+
+.ksp-triangle.active {
+  border-left-color: var(--color-green); 
+  filter: drop-shadow(0 0 3px var(--color-green));
+}
+
+.time-input-wrapper {
+  display: flex; 
+  align-items: center; 
+  background: var(--bg-panel-solid); 
+  border: 1px solid var(--border-dark); 
+  border-radius: 3px; 
+  padding: 1px 6px;
+}
+
+.time-x {
+  color: var(--text-muted); 
+  font-family: var(--font-mono); 
+  font-size: 0.75rem;
+}
+
+.time-scale-input {
+  background: transparent; 
+  border: none; 
+  color: var(--color-green);
+  font-family: var(--font-mono); 
+  font-size: 0.8rem; 
+  font-weight: 500;
+  text-align: right; 
+  width: 75px; 
+  outline: none; 
+  letter-spacing: 1px;
+}
+
+/* =========================================================
+   业务模块：左侧边栏与实体列表
+   ========================================================= */
+.sidebar-container {
+  position: absolute; 
+  top: 60px; 
+  left: 15px;
+  display: flex; 
+  align-items: flex-start; 
+  z-index: 10; 
+  gap: 5px;
+}
+
 .sidebar-panel {
   width: 200px;
   max-height: calc(100vh - 80px);
   transition: transform 0.3s ease, opacity 0.3s ease;
   transform-origin: left center;
 }
-.sidebar-panel.collapsed { transform: translateX(-120%); opacity: 0; pointer-events: none; }
+
+.sidebar-panel.collapsed {
+  transform: translateX(-120%); 
+  opacity: 0; 
+  pointer-events: none;
+}
 
 .toggle-sidebar-btn {
-  background: rgba(10, 15, 20, 0.85); border: 1px solid rgba(77, 168, 218, 0.3);
-  color: #4da8da; width: 20px; height: 30px; border-radius: 4px;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px;
+  background: rgba(10, 15, 20, 0.85); 
+  border: 1px solid var(--border-light);
+  color: var(--color-blue); 
+  width: 20px; 
+  height: 30px; 
+  border-radius: 4px;
+  cursor: pointer; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  font-size: 12px;
   transition: transform 0.3s ease, background 0.2s;
 }
-.toggle-sidebar-btn:hover { background: rgba(77, 168, 218, 0.2); }
+
+.toggle-sidebar-btn:hover {
+  background: rgba(var(--color-blue-rgb), 0.2);
+}
+
 .toggle-sidebar-btn.collapsed {
   transform: translateX(-205px);
 }
 
-.tabs-header { display: flex; background: #080c10; border-bottom: 1px solid #222; }
-.tab-btn { flex: 1; background: transparent; border: none; color: #666; padding: 6px 0; font-size: 0.75rem; cursor: pointer; border-bottom: 2px solid transparent; transition: 0.2s; }
-.tab-btn.active { color: #fff; border-bottom: 2px solid #4da8da; background: rgba(77, 168, 218, 0.1); }
-
-/* --- 极简列表 --- */
-.list-container { flex: 1; overflow-y: auto; padding: 4px; }
-.list-item { display: flex; justify-content: space-between; align-items: center; padding: 6px; margin-bottom: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.03); border: 1px solid transparent; cursor: pointer; transition: 0.2s; }
-.list-item:hover { background: rgba(255, 255, 255, 0.08); }
-.list-item.selected { border-color: #4da8da; background: rgba(77, 168, 218, 0.15); }
-.item-info { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; }
-.item-color { width: 8px; height: 8px; border-radius: 50%; }
-.delete-btn { background: transparent; border: 1px solid #ff2b2b; color: #ff2b2b; padding: 2px 4px; border-radius: 3px; font-size: 0.6rem; cursor: pointer; opacity: 0; }
-.list-item:hover .delete-btn { opacity: 1; }
-.empty-text { text-align: center; color: #666; font-size: 0.7rem; margin-top: 10px; }
-
-/* 注入实体 + 号按钮 */
-.add-mini-btn {
-  width: 100%; margin-top: 4px; padding: 4px; background: transparent;
-  border: 1px dashed #00ff88; color: #00ff88; border-radius: 4px;
-  cursor: pointer; font-weight: bold; font-size: 1rem; line-height: 1; transition: 0.2s;
+.tabs-header {
+  display: flex; 
+  background: var(--bg-tab-header); 
+  border-bottom: 1px solid var(--border-tab);
 }
-.add-mini-btn:hover { background: rgba(0, 255, 136, 0.15); }
 
+.tab-btn {
+  flex: 1; 
+  background: transparent; 
+  border: none; 
+  color: var(--text-dark); 
+  padding: 6px 0; 
+  font-size: 0.75rem; 
+  cursor: pointer; 
+  border-bottom: 2px solid transparent; 
+  transition: 0.2s;
+}
+
+.tab-btn.active {
+  color: var(--text-main); 
+  border-bottom: 2px solid var(--color-blue); 
+  background: rgba(var(--color-blue-rgb), 0.1);
+}
+
+.list-container {
+  flex: 1; 
+  overflow-y: auto; 
+  padding: 4px;
+}
+
+.list-item {
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  padding: 6px; 
+  margin-bottom: 4px; 
+  border-radius: 4px; 
+  background: rgba(255, 255, 255, 0.03); 
+  border: 1px solid transparent; 
+  cursor: pointer; 
+  transition: 0.2s;
+}
+
+.list-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.list-item.selected {
+  border-color: var(--color-blue); 
+  background: rgba(var(--color-blue-rgb), 0.15);
+}
+
+.item-info {
+  display: flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-size: 0.75rem;
+}
+
+.item-color {
+  width: 8px; 
+  height: 8px; 
+  border-radius: 50%;
+}
+
+.delete-btn {
+  background: transparent; 
+  border: 1px solid var(--color-red-alert); 
+  color: var(--color-red-alert); 
+  padding: 2px 4px; 
+  border-radius: 3px; 
+  font-size: 0.6rem; 
+  cursor: pointer; 
+  opacity: 0;
+}
+
+.list-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.empty-text {
+  text-align: center; 
+  color: var(--text-dark); 
+  font-size: 0.7rem; 
+  margin-top: 10px;
+}
+
+.add-mini-btn {
+  width: 100%; 
+  margin-top: 4px; 
+  padding: 4px; 
+  background: transparent;
+  border: 1px dashed var(--color-green); 
+  color: var(--color-green); 
+  border-radius: 4px;
+  cursor: pointer; 
+  font-weight: bold; 
+  font-size: 1rem; 
+  line-height: 1; 
+  transition: 0.2s;
+}
+
+.add-mini-btn:hover {
+  background: rgba(var(--color-green-rgb), 0.15);
+}
 
 /* =========================================================
-   --- 【重构核心】：左右结构紧凑型表单 ---
+   业务模块：实体表单 (Add Entity)
    ========================================================= */
 .compact-form { 
   padding: 10px 15px; 
@@ -149,7 +378,6 @@ html, body, #root {
 
 .form-row { 
   display: flex; 
-  /* 改为 left 对齐，通过固定标签宽度来实现控件对齐 */
   justify-content: flex-start; 
   align-items: center; 
   font-size: 11px;
@@ -157,66 +385,60 @@ html, body, #root {
   height: 18px; 
 }
 
-/* 【核心修复】：将标签列宽度锁死，保证右侧控件完美对齐 */
 .form-row label { 
-  color: #a0aab5; 
-  width: 90px; /* 锁死标签列宽度 */
-  text-align: left; /* 标签文本左对齐 */
+  color: var(--text-muted); 
+  width: 90px; 
+  text-align: left; 
   white-space: nowrap; 
   line-height: 1; 
   overflow: hidden;
-  text-overflow: ellipsis; /* 防止超长标签破坏布局 */
+  text-overflow: ellipsis; 
 }
 
-/* 控件的基础通用样式 */
 .form-row input, 
 .form-row select {
-  background: rgba(0,0,0,0.5); 
-  border: 1px solid #334155; 
-  color: #00ff88;
+  background: var(--bg-input); 
+  border: 1px solid var(--border-dark); 
+  color: var(--color-green);
   padding: 0 4px; 
   height: 14px; 
   line-height: 14px;
   border-radius: 2px; 
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
-  width: 100px; /* 统一所有输入控件的宽度 */
-  text-align: right; /* 内容右对齐 */
+  width: 100px; 
+  text-align: right; 
   outline: none;
   transition: border-color 0.2s;
 }
 
 .form-row input:focus, 
 .form-row select:focus {
-  border-color: #4da8da;
+  border-color: var(--color-blue);
 }
 
-/* 【核心修复】：彻底拔除 select 的下拉图标，实现纯右对齐文本块 */
 .form-row select {
-  color: #fff;
-  /* 强行拔除原生下拉图标 */
+  color: var(--text-main);
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  /* 确保文本在容器内完美贴右 */
   padding-right: 4px; 
 }
 
-/* 针对某些浏览器的 option 文本对齐进行修复 */
 .form-row select option {
-  background-color: #0f141e;
-  color: #fff;
+  background-color: var(--bg-panel-solid);
+  color: var(--text-main);
   text-align: right;
 }
 
 .launch-btn { 
-  margin-top: 8px; /* 增加一点与上方的间距 */
-  width: 100%; /* 按钮全宽 */
+  margin-top: 8px; 
+  width: 100%; 
   padding: 0; 
   height: 20px; 
   line-height: 20px; 
-  background: #4da8da; 
-  color: #fff; 
+  background: var(--color-blue); 
+  color: var(--text-main); 
   border: none; 
   border-radius: 3px; 
   cursor: pointer; 
@@ -224,55 +446,61 @@ html, body, #root {
   font-weight: bold; 
   transition: background 0.2s;
 }
-.launch-btn:hover { background: #3c8ebd; }
 
-/* ========================================================= */
+.launch-btn:hover {
+  background: var(--color-blue-hover);
+}
 
-/* --- 右侧详情面板 (可水平拉伸) --- */
+/* =========================================================
+   业务模块：右侧遥测详情面板 (Telemetry)
+   ========================================================= */
 .detail-panel {
   min-width: 200px;
   max-width: 400px;
-  resize: horizontal; /* CSS 原生拖拽拉伸 */
-  direction: rtl; /* 将拉伸角标移到左下角，方便向左拖拽变宽 */
+  resize: horizontal; 
+  direction: rtl; 
 }
+
 .detail-panel > div {
-  direction: ltr; /* 将内部文字重新纠正为左到右排布 */
+  direction: ltr; 
 }
-.data-row { display: flex; justify-content: space-between; align-items: center; padding: 0; height: 16px; line-height: 16px; border-bottom: 1px dotted rgba(255,255,255,0.1); font-size: 11px; }
-.data-row .key { color: #a0aab5; white-space: nowrap; margin-right: 15px; }
-.data-row .val { color: #fff; font-family: 'Courier New', monospace; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.data-row {
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  padding: 0; 
+  height: 16px; 
+  line-height: 16px; 
+  border-bottom: 1px dotted rgba(255,255,255,0.1); 
+  font-size: 11px;
+}
+
+.data-row .key {
+  color: var(--text-muted); 
+  white-space: nowrap; 
+  margin-right: 15px;
+}
+
+.data-row .val {
+  color: var(--text-main); 
+  font-family: var(--font-mono); 
+  text-align: right; 
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis;
+}
 
 /* =========================================================
-   --- 【重构核心】：全局彻底隐藏 number 类型的上下箭头 ---
+   业务模块：设置项面板 (Settings)
    ========================================================= */
-/* 针对 Chrome, Safari, Edge, Opera */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-/* 针对 Firefox */
-input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-.perf-radar {
-  position: absolute !important;
-  top: auto !important;
-  bottom: 15px !important; /* 把它定死在左下角 */
-  left: 15px !important;
-  z-index: 100 !important;
-}
-
 .settings-panel {
-  background-color: #0f141e !important; /* 强制深灰不透明底色 */
+  background-color: var(--bg-panel-solid) !important; 
   width: 340px;
   border-radius: 6px;
   padding-bottom: 20px;
 }
 
-/* 隐形拖拽头部：覆盖原有 drag-handle，使其透明无文字，但保留拖拽功能 */
 .settings-panel .drag-handle {
   background: transparent;
   border-bottom: none;
@@ -280,43 +508,43 @@ input[type="number"] {
   padding: 0;
 }
 
-/* 分类标题 (居中，白色) */
 .settings-category-title {
   text-align: center;
   font-size: 15px;
   font-weight: normal;
-  color: #fff;
+  color: var(--text-main);
   margin: 6px 0 6px 0;
   letter-spacing: 1px;
 }
 
-/* 分隔线 */
 .settings-divider {
   height: 1px;
-  background-color: #2a3441;
+  background-color: var(--divider-color);
   margin: 10px 20px;
 }
 
-/* 左右排版的设置项 */
 .settings-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 35px; /* 控制左右边距 */
+  padding: 0 35px; 
   margin-bottom: 10px;
 }
+
 .settings-row .label {
-  color: #a0aab5;
+  color: var(--text-muted);
   font-size: 12px;
 }
+
 .settings-row .control {
-  width: 130px; /* 固定右侧下拉框宽度 */
+  width: 130px; 
 }
+
 .settings-row select {
   width: 100%;
-  background: #151a22; /* 极暗的输入框背景 */
-  border: 1px solid #2a3441;
-  color: #fff;
+  background: #151a22; 
+  border: 1px solid var(--divider-color);
+  color: var(--text-main);
   padding: 4px 8px;
   border-radius: 3px;
   font-size: 12px;
@@ -325,6 +553,18 @@ input[type="number"] {
   -webkit-appearance: none;
   cursor: pointer;
 }
+
 .settings-row select:focus {
-  border-color: #4da8da;
+  border-color: var(--color-blue);
+}
+
+/* =========================================================
+   其它工具类样式
+   ========================================================= */
+.perf-radar {
+  position: absolute !important;
+  top: auto !important;
+  bottom: 15px !important; 
+  left: 15px !important;
+  z-index: 100 !important;
 }
