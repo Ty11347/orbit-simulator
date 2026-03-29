@@ -26,7 +26,7 @@ export interface OrbitPathHelperProps {
   AOP: number;
   color?: string;
   segments?: number;
-  soi?: number; // 🚨 新增：当前轨道所在父天体的引力作用球半径
+  soi?: number;
 }
 
 // =========================================================================
@@ -134,7 +134,7 @@ interface DynamicOrbitPathProps {
   patches?: Float64Array;
   color?: string;
   meshRefs: React.MutableRefObject<(THREE.Mesh | null)[]>;
-  bodies: any[]; // 🚨 新增：必须传入全体星体数据，用于查找未来每个补丁所在星体的 SOI
+  bodies: any[];
 }
 
 export function DynamicOrbitPath({ patches, color = ORBIT_CONFIG.COLOR_PREDICT_CURRENT, meshRefs, bodies }: DynamicOrbitPathProps) {
