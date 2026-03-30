@@ -46,6 +46,7 @@ export function SolarSystem() {
   // 缓存引擎状态，去除60Hz状态派发导致的CPU空转
   const engineDataInitialized = useRef(false);
   const prevBodyCount = useRef(0);
+  const universeTime = useRef(0);
 
   // 初始化物理引擎
   useEffect(() => {
@@ -87,19 +88,23 @@ export function SolarSystem() {
         }
       });
 
-      // 推进稳定均匀的物理时间
-      // 防止操作系统的微小帧率波动在万倍加速下被放大成巨大的物理位移误差
-      let stepDelta = Math.min(delta, 0.1); // 限制单帧最大跨度
-      
-      if (timeScale > 10) {
-        // 高倍速：使用 5% 的阻尼平滑真实的物理步长
-        smoothedDelta.current = THREE.MathUtils.lerp(smoothedDelta.current, stepDelta, 0.05);
-        stepDelta = smoothedDelta.current;
-      } else {
-        // 低倍速：使用实时物理同步
-        smoothedDelta.current = stepDelta;
+      // 现在的引擎是纯解析方程求根，免疫穿模，我们直接给它喂“绝对宇宙时间”！
+      universeTime.current += delta * timeScale;
+      engine.update_to_time(universeTime.current);
+
+      // 如果当前选中了飞船，在控制台高频打印它的轨道比能量
+      if (selectedBodyId !== null) {
+        const targetBody = bodies.find(b => b.id === selectedBodyId);
+        if (targetBody && targetBody.type === 'VEHICLE') {
+          // Rust 引擎中的索引即为飞船在 bodies 数组中的顺序
+          const rustIdx = bodies.findIndex(b => b.id === selectedBodyId);
+          if (rustIdx !== -1) {
+            const energy = engine.get_specific_orbital_energy(rustIdx);
+            // 正常滑行和跨越 SOI 时，这个数值应该像钉子一样死死钉住，绝对不变！
+            console.log(`[能量测谎仪] 飞船 ${targetBody.name || targetBody.id} 比能量 (ε): ${energy.toFixed(8)}`);
+          }
+        }
       }
-      engine.update(stepDelta * timeScale);
 
       // 获取物理引擎内存指针数据
       const posPtr = engine.get_positions_ptr();

@@ -6,7 +6,6 @@ use wasm_bindgen::prelude::*;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-// 引入 epoch 字段，彻底解决长时间运行的相位漂移和浮点精度灾难
 #[derive(Clone, Copy)]
 struct Body {
     mass: f64, 
@@ -20,7 +19,15 @@ struct Body {
     parent_index: i32, 
     soi_radius: f64, 
     is_simulated: bool, 
-    is_burning: bool,     
+    is_burning: bool,  
+    p: f64, 
+}
+
+#[derive(Clone, Copy)]
+struct SOIEvent {
+    time: f64,
+    body_idx: usize,
+    new_parent: i32,
 }
 
 #[wasm_bindgen]
@@ -38,62 +45,108 @@ impl PhysicsEngine {
     fn compute_analytical(&self, idx: usize, time: f64) -> (f64, f64, f64, f64, f64, f64) {
         let body = &self.bodies[idx];
         let p_idx = body.parent_index as usize;
-        let parent_mass = self.bodies[p_idx].mass;
-        let mu = G * parent_mass;
+        let mu = G * self.bodies[p_idx].mass;
 
-        let n = (mu / body.sma.abs().powi(3)).sqrt();
-        // 核心修复：平近点角与 epoch 强绑定，消除绝对时间的浮点误差叠加
-        let m = body.m0 + n * (time - body.epoch);
+        let mut e_safe = body.ecc;
+        let is_parabola = (e_safe - 1.0).abs() < 1e-7;
+        if is_parabola { e_safe = 1.0; }
+
+        let n = if is_parabola {
+            2.0 * (mu / (2.0 * body.p.powi(3))).sqrt()
+        } else {
+            (mu / body.sma.abs().powi(3)).sqrt()
+        };
+
+        let mut m = body.m0 + n * (time - body.epoch);
+
+        if e_safe < 1.0 {
+            m = m % (2.0 * std::f64::consts::PI);
+            if m < 0.0 { m += 2.0 * std::f64::consts::PI; }
+        }
         
-        let mut e_anomaly = m;
         let px; let py; let v_px; let v_py;
 
-        if body.ecc < 1.0 {
+        if is_parabola {
+            let a_b = 1.5 * m;
+            let b_b = (a_b + (a_b * a_b + 1.0).sqrt()).cbrt();
+            let d = b_b - 1.0 / b_b;
+            let nu = 2.0 * d.atan();
+            let r_inst = body.p / (1.0 + nu.cos());
+            
+            px = r_inst * nu.cos();
+            py = r_inst * nu.sin();
+            let coeff = (mu / body.p).sqrt();
+            v_px = coeff * (-nu.sin());
+            v_py = coeff * (e_safe + nu.cos());
+        } else if e_safe < 1.0 {
+            let mut e_anomaly = m;
+            let mut converged = false;
             for _ in 0..MAX_NEWTON_ITERATIONS {
-                let f_e = e_anomaly - body.ecc * e_anomaly.sin() - m;
-                let f_prime_e = 1.0 - body.ecc * e_anomaly.cos();
-                e_anomaly -= f_e / f_prime_e;
+                let f_e = e_anomaly - e_safe * e_anomaly.sin() - m;
+                let f_prime_e = 1.0 - e_safe * e_anomaly.cos();
+                
+                if f_prime_e.abs() < 1e-10 { break; } 
+                
+                let step = f_e / f_prime_e;
+                e_anomaly -= step;
+                if step.abs() < 1e-8 { converged = true; break; }
             }
-            px = body.sma * (e_anomaly.cos() - body.ecc);
-            py = body.sma * (1.0 - body.ecc * body.ecc).sqrt() * e_anomaly.sin();
-            let r_inst = body.sma * (1.0 - body.ecc * e_anomaly.cos());
+            if !converged {
+                let mut low = m - e_safe;
+                let mut high = m + e_safe;
+                for _ in 0..30 {
+                    e_anomaly = (low + high) / 2.0;
+                    let f_e = e_anomaly - e_safe * e_anomaly.sin() - m;
+                    if f_e > 0.0 { high = e_anomaly; } else { low = e_anomaly; }
+                }
+            }
+            px = body.sma * (e_anomaly.cos() - e_safe);
+            py = body.sma * (1.0 - e_safe * e_safe).sqrt() * e_anomaly.sin();
+            let r_inst = body.sma * (1.0 - e_safe * e_anomaly.cos());
             let coeff = (mu * body.sma).sqrt() / r_inst;
             v_px = coeff * (-e_anomaly.sin());
-            v_py = coeff * ((1.0 - body.ecc * body.ecc).sqrt() * e_anomaly.cos());
+            v_py = coeff * ((1.0 - e_safe * e_safe).sqrt() * e_anomaly.cos());
         } else {
-            // 双曲线对数降维与钳制保护，防止高 warp 导致 cosh 溢出
-            let mut f_anomaly = if m.abs() > HYPERBOLIC_M_THRESHOLD {
-                m.signum() * (2.0 * m.abs() / body.ecc).ln()
-            } else { 
-                m 
-            };
+            let mut f_anomaly = (m / e_safe).asinh();
 
+            let mut converged = false;
             for _ in 0..MAX_KEPLER_ITERATIONS {
                 let sinh_f = f_anomaly.sinh();
                 let cosh_f = f_anomaly.cosh();
                 if cosh_f.is_infinite() || sinh_f.is_infinite() { break; }
 
-                let f_e = body.ecc * sinh_f - f_anomaly - m;
-                let f_prime_e = body.ecc * cosh_f - 1.0;
-                if f_prime_e.abs() < EPSILON_MATH_DENOMINATOR { break; }
+                let f_e = e_safe * sinh_f - f_anomaly - m;
+                let f_prime_e = e_safe * cosh_f - 1.0;
+                
+                if f_prime_e.abs() < 1e-10 { break; }
                 
                 let step = f_e / f_prime_e;
                 f_anomaly -= step;
-                if step.abs() < HYPERBOLIC_CONVERGENCE { break; }
+                if step.abs() < HYPERBOLIC_CONVERGENCE { converged = true; break; }
             }
-            e_anomaly = f_anomaly.clamp(-HYPERBOLIC_E_CLAMP, HYPERBOLIC_E_CLAMP);
             
-            let cosh_e = e_anomaly.cosh();
-            let sinh_e = e_anomaly.sinh();
+            if !converged {
+                let mut low = -HYPERBOLIC_E_CLAMP;
+                let mut high = HYPERBOLIC_E_CLAMP;
+                for _ in 0..40 {
+                    f_anomaly = (low + high) / 2.0;
+                    let f_e = e_safe * f_anomaly.sinh() - f_anomaly - m;
+                    if f_e > 0.0 { high = f_anomaly; } else { low = f_anomaly; }
+                }
+            }
+            f_anomaly = f_anomaly.clamp(-HYPERBOLIC_E_CLAMP, HYPERBOLIC_E_CLAMP);
+            
+            let cosh_e = f_anomaly.cosh();
+            let sinh_e = f_anomaly.sinh();
 
-            px = body.sma.abs() * (body.ecc - cosh_e);
-            py = body.sma.abs() * (body.ecc * body.ecc - 1.0).sqrt() * sinh_e;
-            let r_inst = body.sma.abs() * (body.ecc * cosh_e - 1.0);
+            px = body.sma.abs() * (e_safe - cosh_e);
+            py = body.sma.abs() * (e_safe * e_safe - 1.0).sqrt() * sinh_e;
+            let r_inst = body.sma.abs() * (e_safe * cosh_e - 1.0);
             let r_safe = if r_inst < EPSILON_DISTANCE { EPSILON_DISTANCE } else { r_inst };
             
             let coeff = (mu * body.sma.abs()).sqrt() / r_safe;
             v_px = coeff * (-sinh_e);
-            v_py = coeff * ((body.ecc * body.ecc - 1.0).sqrt() * cosh_e);
+            v_py = coeff * ((e_safe * e_safe - 1.0).sqrt() * cosh_e);
         }
 
         let cw = body.aop.cos(); let sw = body.aop.sin();
@@ -111,21 +164,131 @@ impl PhysicsEngine {
         (x, y, z, vx, vy, vz)
     }
 
-    fn get_absolute_state_at(&self, idx: usize, t: f64) -> (f64, f64, f64, f64, f64, f64) {
-        let mut curr_idx = idx as i32;
-        let mut abs_x = 0.0; let mut abs_y = 0.0; let mut abs_z = 0.0;
-        let mut abs_vx = 0.0; let mut abs_vy = 0.0; let mut abs_vz = 0.0;
+    fn get_distance_between(&self, idx1: usize, idx2: usize, t: f64) -> f64 {
+        let (x1, y1, z1, _, _, _) = self.compute_analytical(idx1, t);
+        let (x2, y2, z2, _, _, _) = self.compute_analytical(idx2, t);
+        let dx = x1 - x2; let dy = y1 - y2; let dz = z1 - z2;
+        (dx*dx + dy*dy + dz*dz).sqrt()
+    }
+
+    fn get_rel_velocity_dot(&self, idx1: usize, idx2: usize, t: f64) -> f64 {
+        let (x1, y1, z1, vx1, vy1, vz1) = self.compute_analytical(idx1, t);
+        let (x2, y2, z2, vx2, vy2, vz2) = self.compute_analytical(idx2, t);
+        let dx = x1 - x2; let dy = y1 - y2; let dz = z1 - z2;
+        let dvx = vx1 - vx2; let dvy = vy1 - vy2; let dvz = vz1 - vz2; // 修复了这里拼写错误
+        dx*dvx + dy*dvy + dz*dvz
+    }
+
+    fn brents_method<F>(&self, mut f: F, mut a: f64, mut b: f64) -> Option<f64>
+    where F: FnMut(f64) -> f64 {
+        let tol = 1e-8;
+        let mut fa = f(a);
+        let mut fb = f(b);
         
-        while curr_idx != -1 {
-            let c = curr_idx as usize;
-            if self.bodies[c].parent_index != -1 {
-                let (x, y, z, vx, vy, vz) = self.compute_analytical(c, t);
-                abs_x += x; abs_y += y; abs_z += z;
-                abs_vx += vx; abs_vy += vy; abs_vz += vz;
+        if (fa > 0.0 && fb > 0.0) || (fa < 0.0 && fb < 0.0) { return None; } 
+        if fa.abs() < fb.abs() { std::mem::swap(&mut a, &mut b); std::mem::swap(&mut fa, &mut fb); }
+        
+        let mut c = a;
+        let mut fc = fa;
+        let mut mflag = true;
+        let mut d = 0.0;
+
+        for _ in 0..50 {
+            if fb.abs() < 1e-12 || (b - a).abs() < tol { break; }
+            let mut s;
+            if fa != fc && fb != fc { 
+                s = a * fb * fc / ((fa - fb) * (fa - fc))
+                  + b * fa * fc / ((fb - fa) * (fb - fc))
+                  + c * fa * fb / ((fc - fa) * (fc - fb));
+            } else { 
+                s = b - fb * (b - a) / (fb - fa);
             }
-            curr_idx = self.bodies[c].parent_index;
+
+            let cond1 = (s < (3.0 * a + b) / 4.0 && s > b) || (s > (3.0 * a + b) / 4.0 && s < b);
+            let cond2 = mflag && (s - b).abs() >= (b - c).abs() / 2.0;
+            let cond3 = !mflag && (s - b).abs() >= (c - d).abs() / 2.0;
+            let cond4 = mflag && (b - c).abs() < tol;
+            let cond5 = !mflag && (c - d).abs() < tol;
+
+            if cond1 || cond2 || cond3 || cond4 || cond5 {
+                s = (a + b) / 2.0; 
+                mflag = true;
+            } else {
+                mflag = false;
+            }
+
+            let fs = f(s);
+            d = c; c = b; fc = fb;
+
+            if fa * fs < 0.0 { b = s; fb = fs; } else { a = s; fa = fs; }
+            if fa.abs() < fb.abs() { std::mem::swap(&mut a, &mut b); std::mem::swap(&mut fa, &mut fb); }
         }
-        (abs_x, abs_y, abs_z, abs_vx, abs_vy, abs_vz)
+        Some(b)
+    }
+
+    fn find_tca(&self, idx1: usize, idx2: usize, a: f64, b: f64) -> f64 {
+        let invphi = (5.0_f64.sqrt() - 1.0) / 2.0;
+        let invphi2 = (3.0 - 5.0_f64.sqrt()) / 2.0;
+        let tol = 1e-3; 
+
+        let mut a_n = a;
+        let mut b_n = b;
+        let mut h = b_n - a_n;
+        let mut c = a_n + invphi2 * h;
+        let mut d = a_n + invphi * h;
+        let mut fc = self.get_distance_between(idx1, idx2, c);
+        let mut fd = self.get_distance_between(idx1, idx2, d);
+
+        for _ in 0..30 {
+            if h < tol { break; }
+            if fc < fd {
+                b_n = d; d = c; fd = fc;
+                h = b_n - a_n;
+                c = a_n + invphi2 * h;
+                fc = self.get_distance_between(idx1, idx2, c);
+            } else {
+                a_n = c; c = d; fc = fd;
+                h = b_n - a_n;
+                d = a_n + invphi * h;
+                fd = self.get_distance_between(idx1, idx2, d);
+            }
+        }
+        (a_n + b_n) / 2.0
+    }
+
+    fn compute_all_absolute_states_at(&self, t: f64) -> (Vec<f64>, Vec<f64>) {
+        let count = self.bodies.len();
+        let mut abs_pos = vec![0.0; count * 3];
+        let mut abs_vel = vec![0.0; count * 3];
+
+        for i in 0..count {
+            if self.bodies[i].is_burning {
+                let p = self.bodies[i].parent_index as usize;
+                abs_pos[i*3] = abs_pos[p*3] + self.local_positions[i*3];
+                abs_pos[i*3+1] = abs_pos[p*3+1] + self.local_positions[i*3+1];
+                abs_pos[i*3+2] = abs_pos[p*3+2] + self.local_positions[i*3+2];
+                abs_vel[i*3] = abs_vel[p*3] + self.local_velocities[i*3];
+                abs_vel[i*3+1] = abs_vel[p*3+1] + self.local_velocities[i*3+1];
+                abs_vel[i*3+2] = abs_vel[p*3+2] + self.local_velocities[i*3+2];
+                continue;
+            }
+
+            let p_idx = self.bodies[i].parent_index;
+            if p_idx == -1 || self.bodies[i].sma == 0.0 {
+                abs_pos[i*3] = 0.0; abs_pos[i*3+1] = 0.0; abs_pos[i*3+2] = 0.0;
+                abs_vel[i*3] = 0.0; abs_vel[i*3+1] = 0.0; abs_vel[i*3+2] = 0.0;
+            } else {
+                let (lx, ly, lz, lvx, lvy, lvz) = self.compute_analytical(i, t);
+                let p = p_idx as usize;
+                abs_pos[i*3] = abs_pos[p*3] + lx;
+                abs_pos[i*3+1] = abs_pos[p*3+1] + ly;
+                abs_pos[i*3+2] = abs_pos[p*3+2] + lz;
+                abs_vel[i*3] = abs_vel[p*3] + lvx;
+                abs_vel[i*3+1] = abs_vel[p*3+1] + lvy;
+                abs_vel[i*3+2] = abs_vel[p*3+2] + lvz;
+            }
+        }
+        (abs_pos, abs_vel)
     }
 
     fn update_keplerian_at(&mut self, idx: usize, current_time: f64) {
@@ -142,20 +305,20 @@ impl PhysicsEngine {
 
         let h_vec = [r_vec[1]*v_vec[2] - r_vec[2]*v_vec[1], r_vec[2]*v_vec[0] - r_vec[0]*v_vec[2], r_vec[0]*v_vec[1] - r_vec[1]*v_vec[0]];
         let h = (h_vec[0]*h_vec[0] + h_vec[1]*h_vec[1] + h_vec[2]*h_vec[2]).sqrt();
-        
-        let energy = v*v/2.0 - mu/r;
-        let sma = if energy.abs() < EPSILON_ENERGY { 1e9 } else { -mu / (2.0 * energy) };
-        
+        let p = h * h / mu; 
+
         let v_cross_h = [v_vec[1]*h_vec[2] - v_vec[2]*h_vec[1], v_vec[2]*h_vec[0] - v_vec[0]*h_vec[2], v_vec[0]*h_vec[1] - v_vec[1]*h_vec[0]];
         let e_vec = [v_cross_h[0]/mu - r_vec[0]/r, v_cross_h[1]/mu - r_vec[1]/r, v_cross_h[2]/mu - r_vec[2]/r];
         let ecc = (e_vec[0]*e_vec[0] + e_vec[1]*e_vec[1] + e_vec[2]*e_vec[2]).sqrt();
         
+        let sma = if (ecc - 1.0).abs() < 1e-7 { p } 
+                  else if ecc < 1.0 { p / (1.0 - ecc*ecc) } 
+                  else { p / (ecc*ecc - 1.0) };
+
         let n_vec = [-h_vec[1], h_vec[0], 0.0];
         let n = (n_vec[0]*n_vec[0] + n_vec[1]*n_vec[1]).sqrt();
-        
         let inc = (h_vec[2]/h).clamp(-1.0, 1.0).acos();
         
-        // 数学奇点降维处理：共面与圆轨道的退化判断
         let mut lan = 0.0;
         if n > EPSILON_NODE {
             lan = (n_vec[0]/n).clamp(-1.0, 1.0).acos();
@@ -174,175 +337,203 @@ impl PhysicsEngine {
             }
         }
 
-        let mut nu = 0.0;
         let dot_r_v = r_vec[0]*v_vec[0] + r_vec[1]*v_vec[1] + r_vec[2]*v_vec[2];
-        
+        let nu;
         if ecc > EPSILON_ECCENTRICITY {
-            let dot_r_e = r_vec[0]*e_vec[0] + r_vec[1]*e_vec[1] + r_vec[2]*e_vec[2];
-            nu = (dot_r_e / (r * ecc)).clamp(-1.0, 1.0).acos();
-            if dot_r_v < 0.0 { nu = 2.0 * std::f64::consts::PI - nu; }
+            let sin_nu = (h * dot_r_v) / (r * mu * ecc);
+            let cos_nu = (p / r - 1.0) / ecc;
+            nu = sin_nu.atan2(cos_nu);
         } else {
             if n > EPSILON_NODE {
                 let dot_n_r = n_vec[0]*r_vec[0] + n_vec[1]*r_vec[1] + n_vec[2]*r_vec[2];
-                nu = (dot_n_r / (n * r)).clamp(-1.0, 1.0).acos();
-                if r_vec[2] < 0.0 { nu = 2.0 * std::f64::consts::PI - nu; }
+                let mut temp_nu = (dot_n_r / (n * r)).clamp(-1.0, 1.0).acos();
+                if r_vec[2] < 0.0 { temp_nu = 2.0 * std::f64::consts::PI - temp_nu; }
+                nu = temp_nu;
             } else {
-                nu = r_vec[1].atan2(r_vec[0]);
-                if nu < 0.0 { nu += 2.0 * std::f64::consts::PI; }
+                let mut temp_nu = r_vec[1].atan2(r_vec[0]);
+                if temp_nu < 0.0 { temp_nu += 2.0 * std::f64::consts::PI; }
+                nu = temp_nu;
             }
         }
 
         let m0;
-        if ecc < 1.0 {
-            let ea_cos = (ecc + nu.cos()) / (1.0 + ecc * nu.cos());
-            let mut ea = ea_cos.clamp(-1.0, 1.0).acos();
-            if nu > std::f64::consts::PI { ea = 2.0 * std::f64::consts::PI - ea; }
+        if (ecc - 1.0).abs() < 1e-7 {
+            let d = (nu / 2.0).tan();
+            m0 = d + d*d*d / 3.0;
+        } else if ecc < 1.0 {
+            let sin_e = (1.0 - ecc*ecc).sqrt() * nu.sin() / (1.0 + ecc * nu.cos());
+            let cos_e = (ecc + nu.cos()) / (1.0 + ecc * nu.cos());
+            let ea = sin_e.atan2(cos_e);
             m0 = ea - ecc * ea.sin();
         } else {
+            let sinh_f = (ecc*ecc - 1.0).sqrt() * nu.sin() / (1.0 + ecc * nu.cos());
             let cosh_f = (ecc + nu.cos()) / (1.0 + ecc * nu.cos());
-            let mut f = if cosh_f >= 1.0 { (cosh_f + (cosh_f * cosh_f - 1.0).sqrt()).ln() } else { 0.0 };
-            if dot_r_v < 0.0 { f = -f; }
+            let f = sinh_f.signum() * (cosh_f.max(1.0) + (cosh_f.max(1.0).powi(2) - 1.0).sqrt()).ln();
             m0 = ecc * f.sinh() - f;
         }
 
         let body = &mut self.bodies[idx];
         body.sma = sma; body.ecc = ecc; body.inc = inc; body.lan = lan; body.aop = aop;
-        
-        // 核心修复：独立记录 m0 并强行锚定 epoch，从根本上阻断误差传递链
         body.m0 = m0;
         body.epoch = current_time; 
+        body.p = p; 
     }
 
-    fn update_keplerian(&mut self, idx: usize) {
-        self.update_keplerian_at(idx, self.time);
+    fn analytical_escape_time(&self, idx: usize) -> Option<f64> {
+        let body = &self.bodies[idx];
+        let p_idx = body.parent_index;
+        if p_idx == -1 { return None; }
+        let parent_soi = self.bodies[p_idx as usize].soi_radius;
+        if parent_soi <= 0.0 { return None; }
+
+        let e = body.ecc;
+        let p = body.p;
+
+        let (rx, ry, rz, _, _, _) = self.compute_analytical(idx, self.time);
+        let current_r = (rx*rx + ry*ry + rz*rz).sqrt();
+        
+        if current_r > parent_soi { return Some(self.time + 1e-6); }
+
+        let cos_nu = (p / parent_soi - 1.0) / e;
+        
+        if cos_nu > 1.0 + 1e-5 { return None; } 
+        // 🚨 这里就是修复瞬移 Bug 最关键的防线！远地点都不出球的轨道直接拒绝！
+        if cos_nu < -1.0 - 1e-5 { return None; }
+        
+        let cos_nu_clamped = cos_nu.clamp(-1.0, 1.0);
+        let nu_esc = cos_nu_clamped.acos(); 
+
+        let m_esc;
+        if (e - 1.0).abs() < 1e-7 {
+            let d = (nu_esc / 2.0).tan();
+            m_esc = d + d*d*d / 3.0;
+        } else if e < 1.0 {
+            let sin_e = (1.0 - e*e).sqrt() * nu_esc.sin() / (1.0 + e * nu_esc.cos());
+            let cos_e = (e + nu_esc.cos()) / (1.0 + e * nu_esc.cos());
+            let ea = sin_e.atan2(cos_e);
+            m_esc = ea - e * ea.sin();
+        } else {
+            let sinh_f = (e*e - 1.0).sqrt() * nu_esc.sin() / (1.0 + e * nu_esc.cos());
+            let cosh_f = (e + nu_esc.cos()) / (1.0 + e * nu_esc.cos());
+            let f = sinh_f.signum() * (cosh_f.max(1.0) + (cosh_f.max(1.0).powi(2) - 1.0).sqrt()).ln();
+            m_esc = e * f.sinh() - f;
+        }
+
+        let mu = G * self.bodies[p_idx as usize].mass;
+        let n = if (e - 1.0).abs() < 1e-7 {
+            2.0 * (mu / (2.0 * p.powi(3))).sqrt()
+        } else {
+            (mu / body.sma.abs().powi(3)).sqrt()
+        };
+        
+        let mut current_m = body.m0 + n * (self.time - body.epoch);
+        if e < 1.0 {
+            current_m = current_m % (2.0 * std::f64::consts::PI);
+            if current_m < 0.0 { current_m += 2.0 * std::f64::consts::PI; }
+        }
+        
+        let mut dt = (m_esc - current_m) / n;
+        
+        if e < 1.0 {
+            let period = 2.0 * std::f64::consts::PI / n;
+            dt = dt % period;
+            if dt < 0.0 { dt += period; }
+        } else {
+            if dt < 0.0 { return None; } 
+        }
+        
+        if dt > 0.0 && dt < MAX_SAFE_DT {
+            Some(self.time + dt) 
+        } else {
+            None
+        }
     }
 
-    fn handle_soi_transitions(&mut self, dt: f64) {
-        let count = self.bodies.len();
+    fn find_first_soi_transition(&self, idx: usize, max_dt: f64) -> Option<SOIEvent> {
+        let current_parent = self.bodies[idx].parent_index;
+        let mut earliest_event: Option<SOIEvent> = None;
+        let mut min_t = self.time + max_dt;
 
-        for idx in 0..count {
-            if !self.bodies[idx].is_simulated { continue; }
-
-            let current_parent = self.bodies[idx].parent_index as usize;
-            let mut switched = false;
-            let mut new_parent_i32 = current_parent as i32;
-            let mut is_entry = false;
-            let mut target_soi_radius = 0.0;
-            let mut target_parent = 0;
-
-            for target_idx in 0..count {
-                if self.bodies[target_idx].parent_index == (current_parent as i32) && self.bodies[target_idx].soi_radius > 0.0 {
-                    let dx = self.absolute_positions[idx * 3] - self.absolute_positions[target_idx * 3];
-                    let dy = self.absolute_positions[idx * 3 + 1] - self.absolute_positions[target_idx * 3 + 1];
-                    let dz = self.absolute_positions[idx * 3 + 2] - self.absolute_positions[target_idx * 3 + 2];
-                    if (dx*dx + dy*dy + dz*dz).sqrt() < self.bodies[target_idx].soi_radius {
-                        new_parent_i32 = target_idx as i32;
-                        is_entry = true;
-                        target_soi_radius = self.bodies[target_idx].soi_radius;
-                        target_parent = target_idx;
-                        switched = true; 
-                        break;
-                    }
-                }
-            }
-
-            if !switched {
-                let dist_to_parent = (self.local_positions[idx * 3].powi(2) + self.local_positions[idx * 3 + 1].powi(2) + self.local_positions[idx * 3 + 2].powi(2)).sqrt();
-                if dist_to_parent > self.bodies[current_parent].soi_radius && self.bodies[current_parent].parent_index != -1 {
-                    new_parent_i32 = self.bodies[current_parent].parent_index;
-                    is_entry = false;
-                    target_soi_radius = self.bodies[current_parent].soi_radius;
-                    target_parent = current_parent;
-                    switched = true;
-                }
-            }
-
-            if switched {
-                if self.bodies[idx].is_burning {
-                    self.bodies[idx].parent_index = new_parent_i32;
-                    let p_usize = new_parent_i32 as usize;
-                    
-                    let p_px = if new_parent_i32 == -1 { 0.0 } else { self.absolute_positions[p_usize * 3] };
-                    let p_py = if new_parent_i32 == -1 { 0.0 } else { self.absolute_positions[p_usize * 3 + 1] };
-                    let p_pz = if new_parent_i32 == -1 { 0.0 } else { self.absolute_positions[p_usize * 3 + 2] };
-                    let p_vx = if new_parent_i32 == -1 { 0.0 } else { self.absolute_velocities[p_usize * 3] };
-                    let p_vy = if new_parent_i32 == -1 { 0.0 } else { self.absolute_velocities[p_usize * 3 + 1] };
-                    let p_vz = if new_parent_i32 == -1 { 0.0 } else { self.absolute_velocities[p_usize * 3 + 2] };
-
-                    self.local_positions[idx * 3] = self.absolute_positions[idx * 3] - p_px;
-                    self.local_positions[idx * 3 + 1] = self.absolute_positions[idx * 3 + 1] - p_py;
-                    self.local_positions[idx * 3 + 2] = self.absolute_positions[idx * 3 + 2] - p_pz;
-                    self.local_velocities[idx * 3] = self.absolute_velocities[idx * 3] - p_vx;
-                    self.local_velocities[idx * 3 + 1] = self.absolute_velocities[idx * 3 + 1] - p_vy;
-                    self.local_velocities[idx * 3 + 2] = self.absolute_velocities[idx * 3 + 2] - p_vz;
-                    
-                    self.update_keplerian_at(idx, self.time);
-                } else {
-                    let mut t_low = self.time - dt;
-                    let mut t_high = self.time;
-                    
-                    for _ in 0..20 {
-                        let t_mid = (t_low + t_high) / 2.0;
-                        let s_body = self.get_absolute_state_at(idx, t_mid);
-                        let s_target = self.get_absolute_state_at(target_parent, t_mid);
-                        
-                        let dx = s_body.0 - s_target.0;
-                        let dy = s_body.1 - s_target.1;
-                        let dz = s_body.2 - s_target.2;
-                        let dist = (dx*dx + dy*dy + dz*dz).sqrt();
-                        
-                        if is_entry {
-                            if dist < target_soi_radius { t_high = t_mid; } else { t_low = t_mid; }
-                        } else {
-                            if dist > target_soi_radius { t_high = t_mid; } else { t_low = t_mid; }
-                        }
-                    }
-                    let t_cross = t_high;
-
-                    let s_body = self.get_absolute_state_at(idx, t_cross);
-                    let s_new_parent = if new_parent_i32 == -1 {
-                        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-                    } else {
-                        self.get_absolute_state_at(new_parent_i32 as usize, t_cross)
-                    };
-
-                    self.local_positions[idx*3] = s_body.0 - s_new_parent.0;
-                    self.local_positions[idx*3+1] = s_body.1 - s_new_parent.1;
-                    self.local_positions[idx*3+2] = s_body.2 - s_new_parent.2;
-                    self.local_velocities[idx*3] = s_body.3 - s_new_parent.3;
-                    self.local_velocities[idx*3+1] = s_body.4 - s_new_parent.4;
-                    self.local_velocities[idx*3+2] = s_body.5 - s_new_parent.5;
-
-                    self.bodies[idx].parent_index = new_parent_i32;
-                    
-                    self.update_keplerian_at(idx, t_cross);
-
-                    let (nx, ny, nz, nvx, nvy, nvz) = self.compute_analytical(idx, self.time);
-                    self.local_positions[idx*3] = nx;
-                    self.local_positions[idx*3+1] = ny;
-                    self.local_positions[idx*3+2] = nz;
-                    self.local_velocities[idx*3] = nvx;
-                    self.local_velocities[idx*3+1] = nvy;
-                    self.local_velocities[idx*3+2] = nvz;
-
-                    let s_new_parent_now = if new_parent_i32 == -1 {
-                        (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-                    } else {
-                        let np = new_parent_i32 as usize;
-                        (
-                            self.absolute_positions[np*3], self.absolute_positions[np*3+1], self.absolute_positions[np*3+2],
-                            self.absolute_velocities[np*3], self.absolute_velocities[np*3+1], self.absolute_velocities[np*3+2]
-                        )
-                    };
-                    self.absolute_positions[idx*3] = s_new_parent_now.0 + nx;
-                    self.absolute_positions[idx*3+1] = s_new_parent_now.1 + ny;
-                    self.absolute_positions[idx*3+2] = s_new_parent_now.2 + nz;
-                    self.absolute_velocities[idx*3] = s_new_parent_now.3 + nvx;
-                    self.absolute_velocities[idx*3+1] = s_new_parent_now.4 + nvy;
-                    self.absolute_velocities[idx*3+2] = s_new_parent_now.5 + nvz;
+        if current_parent != -1 {
+            if let Some(t_escape) = self.analytical_escape_time(idx) {
+                if t_escape > self.time && t_escape < min_t {
+                    min_t = t_escape;
+                    earliest_event = Some(SOIEvent { time: t_escape, body_idx: idx, new_parent: self.bodies[current_parent as usize].parent_index });
                 }
             }
         }
+
+        let steps = 50;
+        let dt_step = max_dt / (steps as f64);
+        
+        for t_idx in 0..self.bodies.len() {
+            if self.bodies[t_idx].parent_index == current_parent && self.bodies[t_idx].soi_radius > 0.0 && t_idx != idx {
+                let target_soi = self.bodies[t_idx].soi_radius;
+
+                for step in 1..=steps {
+                    let t_start = self.time + ((step - 1) as f64) * dt_step;
+                    let t_end = self.time + (step as f64) * dt_step;
+                    if t_start >= min_t { break; }
+
+                    let d_start = self.get_distance_between(idx, t_idx, t_start) - target_soi;
+                    let d_end = self.get_distance_between(idx, t_idx, t_end) - target_soi;
+                    let dot_start = self.get_rel_velocity_dot(idx, t_idx, t_start);
+                    let dot_end = self.get_rel_velocity_dot(idx, t_idx, t_end);
+
+                    if d_start > 0.0 && d_end <= 0.0 {
+                        if let Some(t_cross) = self.brents_method(|t| self.get_distance_between(idx, t_idx, t) - target_soi, t_start, t_end) {
+                            if t_cross < min_t {
+                                min_t = t_cross;
+                                earliest_event = Some(SOIEvent { time: t_cross, body_idx: idx, new_parent: t_idx as i32 });
+                            }
+                        }
+                    } 
+                    else if d_start > 0.0 && d_end > 0.0 {
+                        if dot_start < 0.0 && dot_end > 0.0 {
+                            let t_min = self.find_tca(idx, t_idx, t_start, t_end);
+                            let d_min = self.get_distance_between(idx, t_idx, t_min) - target_soi;
+
+                            if d_min <= 0.0 {
+                                if let Some(t_cross) = self.brents_method(|t| self.get_distance_between(idx, t_idx, t) - target_soi, t_start, t_min) {
+                                    if t_cross < min_t {
+                                        min_t = t_cross;
+                                        earliest_event = Some(SOIEvent { time: t_cross, body_idx: idx, new_parent: t_idx as i32 });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        earliest_event
+    }
+
+    fn execute_soi_transition(&mut self, idx: usize, new_parent: i32, t_cross: f64) {
+        let (abs_pos, abs_vel) = self.compute_all_absolute_states_at(t_cross);
+        let s_pos = (abs_pos[idx*3], abs_pos[idx*3+1], abs_pos[idx*3+2]);
+        let s_vel = (abs_vel[idx*3], abs_vel[idx*3+1], abs_vel[idx*3+2]);
+        
+        let p_pos; let p_vel;
+        if new_parent == -1 {
+            p_pos = (0.0, 0.0, 0.0); p_vel = (0.0, 0.0, 0.0);
+        } else {
+            let np = new_parent as usize;
+            p_pos = (abs_pos[np*3], abs_pos[np*3+1], abs_pos[np*3+2]);
+            p_vel = (abs_vel[np*3], abs_vel[np*3+1], abs_vel[np*3+2]);
+        }
+
+        self.local_positions[idx*3] = s_pos.0 - p_pos.0;
+        self.local_positions[idx*3+1] = s_pos.1 - p_pos.1;
+        self.local_positions[idx*3+2] = s_pos.2 - p_pos.2;
+        self.local_velocities[idx*3] = s_vel.0 - p_vel.0;
+        self.local_velocities[idx*3+1] = s_vel.1 - p_vel.1;
+        self.local_velocities[idx*3+2] = s_vel.2 - p_vel.2;
+
+        self.bodies[idx].parent_index = new_parent;
+        self.parent_indices[idx] = new_parent;
+        
+        self.update_keplerian_at(idx, t_cross);
     }
 }
 
@@ -353,9 +544,22 @@ impl PhysicsEngine {
         PhysicsEngine { bodies: Vec::new(), local_positions: Vec::new(), local_velocities: Vec::new(), absolute_positions: Vec::new(), absolute_velocities: Vec::new(), parent_indices: Vec::new(), time: 0.0 }
     }
 
-    pub fn add_body(&mut self, mass: f64, sma: f64, ecc: f64, inc: f64, lan: f64, aop: f64, m0: f64, parent_index: i32, soi_radius: f64, is_simulated: bool) -> i32 {
-        // M0 直接赋值，epoch 设定为 0.0（与 JS 端时间一致），杜绝初始数据的偏移
-        let body = Body { mass, sma, ecc, inc, lan, aop, m0, epoch: 0.0, parent_index, soi_radius, is_simulated, is_burning: false };
+    pub fn add_body(&mut self, mass: f64, sma: f64, ecc: f64, inc: f64, lan: f64, aop: f64, mut m0: f64, parent_index: i32, soi_radius: f64, is_simulated: bool) -> i32 {
+        let current_index = self.bodies.len() as i32;
+        
+        if parent_index != -1 { assert!(parent_index < current_index, "Topo Sort Error: Parent MUST be added before child."); }
+
+        let p = if (ecc - 1.0).abs() < 1e-7 { sma.abs() } else if ecc < 1.0 { sma.abs() * (1.0 - ecc*ecc) } else { sma.abs() * (ecc*ecc - 1.0) };
+
+        if parent_index != -1 && sma != 0.0 {
+            let p_idx = parent_index as usize;
+            if p_idx < self.bodies.len() {
+                let mu = G * self.bodies[p_idx].mass;
+                let n_mean = if (ecc - 1.0).abs() < 1e-7 { 2.0 * (mu / (2.0 * p.powi(3))).sqrt() } else { (mu / sma.abs().powi(3)).sqrt() };
+                m0 = m0 - n_mean * self.time;
+            }
+        }
+        let body = Body { mass, sma, ecc, inc, lan, aop, m0, epoch: self.time, parent_index, soi_radius, is_simulated, is_burning: false, p };
         self.bodies.push(body);
         self.parent_indices.push(parent_index);
         self.local_positions.extend_from_slice(&[0.0, 0.0, 0.0]); self.local_velocities.extend_from_slice(&[0.0, 0.0, 0.0]);
@@ -368,163 +572,100 @@ impl PhysicsEngine {
     #[wasm_bindgen]
     pub fn set_burning(&mut self, idx: usize, burning: bool) {
         if self.bodies[idx].is_burning && !burning {
-            self.update_keplerian(idx);
+            self.update_keplerian_at(idx, self.time);
         }
         self.bodies[idx].is_burning = burning;
     }
 
     #[wasm_bindgen]
-    pub fn predict_patches(&mut self, target_idx: usize) -> Vec<f64> {
-        if self.bodies[target_idx].is_burning {
-            self.update_keplerian(target_idx); 
+    pub fn update_to_time(&mut self, target_global_time: f64) {
+        let mut time_remaining = target_global_time - self.time;
+        if time_remaining <= 0.0 { return; }
+        
+        let mut loop_count = 0;
+        
+        while time_remaining > 1e-6 && loop_count < 100 {
+            loop_count += 1;
+            let mut earliest_event: Option<SOIEvent> = None;
+            let mut safe_dt = time_remaining;
+            
+            for idx in 0..self.bodies.len() {
+                if !self.bodies[idx].is_simulated || self.bodies[idx].is_burning { continue; }
+                if let Some(evt) = self.find_first_soi_transition(idx, time_remaining) {
+                    let dt = evt.time - self.time;
+                    if dt < safe_dt && dt >= 0.0 {
+                        safe_dt = dt;
+                        earliest_event = Some(evt);
+                    }
+                }
+            }
+            
+            if let Some(evt) = earliest_event {
+                self.execute_soi_transition(evt.body_idx, evt.new_parent, evt.time);
+                self.time = evt.time + 1e-6; 
+                time_remaining -= safe_dt + 1e-6;
+            } else {
+                self.time += safe_dt;
+                time_remaining -= safe_dt;
+            }
         }
+        
+        self.time = target_global_time;
+        
+        for idx in 0..self.bodies.len() {
+            if self.bodies[idx].parent_index != -1 && (!self.bodies[idx].is_simulated || !self.bodies[idx].is_burning) {
+                let (lx, ly, lz, lvx, lvy, lvz) = self.compute_analytical(idx, self.time);
+                self.local_positions[idx*3] = lx; self.local_positions[idx*3+1] = ly; self.local_positions[idx*3+2] = lz;
+                self.local_velocities[idx*3] = lvx; self.local_velocities[idx*3+1] = lvy; self.local_velocities[idx*3+2] = lvz;
+            }
+        }
+        let (abs_p, abs_v) = self.compute_all_absolute_states_at(self.time);
+        self.absolute_positions = abs_p;
+        self.absolute_velocities = abs_v;
+    }
+
+    #[wasm_bindgen]
+    pub fn predict_patches(&mut self, target_idx: usize) -> Vec<f64> {
+        if self.bodies[target_idx].is_burning { self.update_keplerian_at(target_idx, self.time); }
         let mut sim = PhysicsEngine { bodies: self.bodies.clone(), local_positions: self.local_positions.clone(), local_velocities: self.local_velocities.clone(), absolute_positions: self.absolute_positions.clone(), absolute_velocities: self.absolute_velocities.clone(), parent_indices: self.parent_indices.clone(), time: self.time };
         sim.bodies[target_idx].is_burning = false;
         
         let mut patches = Vec::new();
         let b = &sim.bodies[target_idx];
         patches.extend_from_slice(&[b.parent_index as f64, b.sma, b.ecc, b.inc, b.lan, b.aop]);
-        let mut current_parent = b.parent_index;
         
         for _ in 0..MAX_PREDICT_STEPS {
-            let c_parent = sim.bodies[target_idx].parent_index as usize;
-            let mut safe_dt = MAX_SAFE_DT;
-            let s_px = sim.absolute_positions[target_idx*3]; let s_py = sim.absolute_positions[target_idx*3+1]; let s_pz = sim.absolute_positions[target_idx*3+2];
-            let s_vx = sim.absolute_velocities[target_idx*3]; let s_vy = sim.absolute_velocities[target_idx*3+1]; let s_vz = sim.absolute_velocities[target_idx*3+2];
-
-            for i in 0..sim.bodies.len() {
-                if sim.bodies[i].parent_index == c_parent as i32 && sim.bodies[i].soi_radius > 0.0 {
-                    let dx = s_px - sim.absolute_positions[i*3]; let dy = s_py - sim.absolute_positions[i*3+1]; let dz = s_pz - sim.absolute_positions[i*3+2];
-                    let dist = (dx*dx + dy*dy + dz*dz).sqrt();
-                    let soi = sim.bodies[i].soi_radius;
-                    if dist > soi {
-                        let dvx = s_vx - sim.absolute_velocities[i*3]; let dvy = s_vy - sim.absolute_velocities[i*3+1]; let dvz = s_vz - sim.absolute_velocities[i*3+2];
-                        let rel_v = (dvx*dvx + dvy*dvy + dvz*dvz).sqrt().max(MIN_REL_VELOCITY);
-                        let t = (dist - soi) / rel_v;
-                        if t < safe_dt { safe_dt = t; }
-                    }
-                }
-            }
-            
-            let parent_soi = sim.bodies[c_parent].soi_radius;
-            if parent_soi > 0.0 {
-                let dist_to_parent = (sim.local_positions[target_idx*3].powi(2) + sim.local_positions[target_idx*3+1].powi(2) + sim.local_positions[target_idx*3+2].powi(2)).sqrt();
-                if dist_to_parent < parent_soi {
-                    let v_local = (sim.local_velocities[target_idx*3].powi(2) + sim.local_velocities[target_idx*3+1].powi(2) + sim.local_velocities[target_idx*3+2].powi(2)).sqrt().max(MIN_REL_VELOCITY);
-                    let t = (parent_soi - dist_to_parent) / v_local;
-                    if t < safe_dt { safe_dt = t; }
-                }
-            }
-
-            let mu = G * sim.bodies[c_parent].mass;
+            let p_idx = sim.bodies[target_idx].parent_index;
+            let mu = if p_idx == -1 { G * 1.989e30 } else { G * sim.bodies[p_idx as usize].mass };
             let sma = sim.bodies[target_idx].sma.abs();
             let period = if sma > 0.0 { 2.0 * std::f64::consts::PI * (sma.powi(3) / mu).sqrt() } else { MAX_SAFE_DT };
-            let orbit_dt = period / ORBIT_DT_DIVISOR; 
-            let dt = if safe_dt < orbit_dt { safe_dt + SAFE_DT_PADDING } else { orbit_dt }.clamp(MIN_DT_CLAMP, MAX_SAFE_DT);
+            let lookahead = period.max(1000.0).min(MAX_SAFE_DT * 10.0);
             
-            sim.time += dt;
-            let (x, y, z, vx, vy, vz) = sim.compute_analytical(target_idx, sim.time);
-            sim.local_positions[target_idx * 3] = x; sim.local_positions[target_idx * 3 + 1] = y; sim.local_positions[target_idx * 3 + 2] = z;
-            sim.local_velocities[target_idx * 3] = vx; sim.local_velocities[target_idx * 3 + 1] = vy; sim.local_velocities[target_idx * 3 + 2] = vz;
-            
-            for idx in 0..sim.bodies.len() {
-                let p_idx = sim.bodies[idx].parent_index;
-                if p_idx == -1 {
-                    sim.absolute_positions[idx * 3] = 0.0; sim.absolute_positions[idx * 3 + 1] = 0.0; sim.absolute_positions[idx * 3 + 2] = 0.0;
-                    sim.absolute_velocities[idx * 3] = 0.0; sim.absolute_velocities[idx * 3 + 1] = 0.0; sim.absolute_velocities[idx * 3 + 2] = 0.0;
-                } else {
-                    let p = p_idx as usize;
-                    sim.absolute_positions[idx * 3] = sim.absolute_positions[p * 3] + sim.local_positions[idx * 3];
-                    sim.absolute_positions[idx * 3 + 1] = sim.absolute_positions[p * 3 + 1] + sim.local_positions[idx * 3 + 1];
-                    sim.absolute_positions[idx * 3 + 2] = sim.absolute_positions[p * 3 + 2] + sim.local_positions[idx * 3 + 2];
-                    sim.absolute_velocities[idx * 3] = sim.absolute_velocities[p * 3] + sim.local_velocities[idx * 3];
-                    sim.absolute_velocities[idx * 3 + 1] = self.absolute_velocities[p * 3 + 1] + self.local_velocities[idx * 3 + 1];
-                    sim.absolute_velocities[idx * 3 + 2] = self.absolute_velocities[p * 3 + 2] + self.local_velocities[idx * 3 + 2];
-                }
-            }
-
-            sim.handle_soi_transitions(dt);
-            
-            let new_parent = sim.bodies[target_idx].parent_index;
-            if new_parent != current_parent {
+            if let Some(evt) = sim.find_first_soi_transition(target_idx, lookahead) {
+                sim.execute_soi_transition(evt.body_idx, evt.new_parent, evt.time);
+                sim.time = evt.time + 1e-6; 
                 let nb = &sim.bodies[target_idx];
                 patches.extend_from_slice(&[nb.parent_index as f64, nb.sma, nb.ecc, nb.inc, nb.lan, nb.aop]);
-                current_parent = new_parent;
-                if patches.len() > MAX_PATCHES { break; } 
+                if patches.len() / 6 >= MAX_PATCHES { break; }
+            } else {
+                if sim.bodies[target_idx].ecc < 1.0 { break; }
+                if sim.bodies[target_idx].parent_index == -1 && sim.bodies[target_idx].ecc >= 1.0 { break; }
+                sim.time += lookahead; 
             }
         }
         patches
     }
 
-    pub fn update(&mut self, delta_time: f64) {
-        let substeps = PHYSICS_SUBSTEPS; 
-        let dt = delta_time / (substeps as f64);
-
-        for _ in 0..substeps {
-            self.time += dt;
-            let count = self.bodies.len();
-
-            for idx in 0..count {
-                let body = self.bodies[idx];
-                if body.sma == 0.0 || body.parent_index == -1 { continue; }
-                
-                if !body.is_simulated || !body.is_burning {
-                    let (x, y, z, vx, vy, vz) = self.compute_analytical(idx, self.time);
-                    self.local_positions[idx * 3] = x; self.local_positions[idx * 3 + 1] = y; self.local_positions[idx * 3 + 2] = z;
-                    self.local_velocities[idx * 3] = vx; self.local_velocities[idx * 3 + 1] = vy; self.local_velocities[idx * 3 + 2] = vz;
-                } else {
-                    let p_idx = body.parent_index as usize;
-                    let mass = self.bodies[p_idx].mass;
-                    
-                    let cur_pos = (self.local_positions[idx*3], self.local_positions[idx*3+1], self.local_positions[idx*3+2]);
-                    let r_sq = cur_pos.0*cur_pos.0 + cur_pos.1*cur_pos.1 + cur_pos.2*cur_pos.2;
-                    let r = r_sq.sqrt();
-                    let f1 = if r < EPSILON_GRAVITY_DISTANCE { 0.0 } else { -G * mass / (r_sq * r) };
-                    let a1 = (f1 * cur_pos.0, f1 * cur_pos.1, f1 * cur_pos.2);
-
-                    let next_pos = (
-                        cur_pos.0 + self.local_velocities[idx*3] * dt + 0.5 * a1.0 * dt * dt,
-                        cur_pos.1 + self.local_velocities[idx*3+1] * dt + 0.5 * a1.1 * dt * dt,
-                        cur_pos.2 + self.local_velocities[idx*3+2] * dt + 0.5 * a1.2 * dt * dt,
-                    );
-
-                    let next_r_sq = next_pos.0*next_pos.0 + next_pos.1*next_pos.1 + next_pos.2*next_pos.2;
-                    let next_r = next_r_sq.sqrt();
-                    let f2 = if next_r < EPSILON_GRAVITY_DISTANCE { 0.0 } else { -G * mass / (next_r_sq * next_r) };
-                    let a2 = (f2 * next_pos.0, f2 * next_pos.1, f2 * next_pos.2);
-
-                    self.local_velocities[idx * 3] += 0.5 * (a1.0 + a2.0) * dt;
-                    self.local_velocities[idx * 3 + 1] += 0.5 * (a1.1 + a2.1) * dt;
-                    self.local_velocities[idx * 3 + 2] += 0.5 * (a1.2 + a2.2) * dt;
-                    
-                    self.local_positions[idx * 3] = next_pos.0;
-                    self.local_positions[idx * 3 + 1] = next_pos.1;
-                    self.local_positions[idx * 3 + 2] = next_pos.2;
-                }
-            }
-
-            for idx in 0..count {
-                let p_idx = self.bodies[idx].parent_index;
-                if p_idx == -1 {
-                    self.absolute_positions[idx * 3] = 0.0; self.absolute_positions[idx * 3 + 1] = 0.0; self.absolute_positions[idx * 3 + 2] = 0.0;
-                    self.absolute_velocities[idx * 3] = 0.0; self.absolute_velocities[idx * 3 + 1] = 0.0; self.absolute_velocities[idx * 3 + 2] = 0.0;
-                } else {
-                    let p = p_idx as usize;
-                    self.absolute_positions[idx * 3] = self.absolute_positions[p * 3] + self.local_positions[idx * 3];
-                    self.absolute_positions[idx * 3 + 1] = self.absolute_positions[p * 3 + 1] + self.local_positions[idx * 3 + 1];
-                    self.absolute_positions[idx * 3 + 2] = self.absolute_positions[p * 3 + 2] + self.local_positions[idx * 3 + 2];
-                    self.absolute_velocities[idx * 3] = self.absolute_velocities[p * 3] + self.local_velocities[idx * 3];
-                    self.absolute_velocities[idx * 3 + 1] = self.absolute_velocities[p * 3 + 1] + self.local_velocities[idx * 3 + 1];
-                    self.absolute_velocities[idx * 3 + 2] = self.absolute_velocities[p * 3 + 2] + self.local_velocities[idx * 3 + 2];
-                }
-            }
-
-            self.handle_soi_transitions(dt);
-            
-            for idx in 0..count {
-                self.parent_indices[idx] = self.bodies[idx].parent_index;
-            }
-        }
+    #[wasm_bindgen]
+    pub fn get_specific_orbital_energy(&self, idx: usize) -> f64 {
+        let p_idx = self.bodies[idx].parent_index;
+        if p_idx == -1 { return 0.0; }
+        let mu = G * self.bodies[p_idx as usize].mass;
+        let vx = self.local_velocities[idx*3]; let vy = self.local_velocities[idx*3+1]; let vz = self.local_velocities[idx*3+2];
+        let rx = self.local_positions[idx*3]; let ry = self.local_positions[idx*3+1]; let rz = self.local_positions[idx*3+2];
+        let v_sq = vx*vx + vy*vy + vz*vz;
+        let r = (rx*rx + ry*ry + rz*rz).sqrt();
+        v_sq / 2.0 - mu / r
     }
 
     pub fn get_positions_ptr(&self) -> *const f64 { self.absolute_positions.as_ptr() }
