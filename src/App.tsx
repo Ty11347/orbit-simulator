@@ -1,7 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, Stats } from '@react-three/drei';
 import { SolarSystem } from './components/SolarSystem';
-import { useEngineStore } from './store/useEngineStore';
+import { useUIStore } from './store/useUIStore';
 import { useSpacebarToggle } from './hooks/useSpacebarToggle';
 
 import { SettingsWindow } from './components/ui/SettingsWindow';
@@ -13,7 +13,7 @@ import { TimeControlBar } from './components/ui/TimeControlBar';
 import './App.css';
 
 function App() {
-  const setSettingsWindowOpen = useEngineStore(state => state.setSettingsWindowOpen);
+  const setSettingsWindowOpen = useUIStore(state => state.setSettingsWindowOpen);
 
   // 注册全局空格键暂停监听器
   useSpacebarToggle();

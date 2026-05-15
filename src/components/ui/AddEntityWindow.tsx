@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useEngineStore } from '../../store/useEngineStore';
+import { useUIStore } from '../../store/useUIStore';
 import { useTranslation } from '../../hooks/useTranslation';
 import { useNativeDrag } from '../../hooks/useNativeDrag';
 
 // 添加新天体/飞船的交互面板
 export function AddEntityWindow() {
-  const { isAddModalOpen, setAddModalOpen, addBody, bodies } = useEngineStore();
+  const { addBody, bodies } = useEngineStore();
+  const { isAddModalOpen, setAddModalOpen } = useUIStore();
   const { t } = useTranslation();
   const panelRef = useNativeDrag(isAddModalOpen);
 

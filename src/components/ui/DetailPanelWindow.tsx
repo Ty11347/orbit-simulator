@@ -1,21 +1,17 @@
 import { useEffect, useRef } from 'react';
 import { useEngineStore } from '../../store/useEngineStore';
+import { useUIStore } from '../../store/useUIStore';
 import { useTranslation } from '../../hooks/useTranslation';
 import { useNativeDrag } from '../../hooks/useNativeDrag';
 import { formatUnit, formatTime } from '../../utils/formatters';
+import { telemetryRef } from '../../utils/telemetry';
 
-// 物理学常数定义
-const PHYSICS_CONSTANTS = {
-  G: 6.67430e-11
-};
-
-// 遥测与轨道详情面板组件
 export function DetailPanelWindow() {
-  const { selectedBodyId, bodies, setSelectedBody } = useEngineStore();
+  const bodies = useEngineStore(state => state.bodies);
+  const { selectedBodyId, setSelectedBody } = useUIStore();
   const { t } = useTranslation();
   const panelRef = useNativeDrag(selectedBodyId);
 
-  // 集中声明所有用于直接操作 DOM 以避免 React 重绘的 Refs
   const xRef = useRef<HTMLSpanElement>(null);
   const yRef = useRef<HTMLSpanElement>(null);
   const zRef = useRef<HTMLSpanElement>(null);
@@ -30,113 +26,53 @@ export function DetailPanelWindow() {
 
   useEffect(() => {
     if (selectedBodyId === null) return;
-    const bodyIndex = bodies.findIndex(b => b.id === selectedBodyId);
-    if (bodyIndex === -1) return;
 
     let frameId: number;
+    let lastParentId = -1;
 
-    // 渲染循环：提取底层物理内存并反推轨道参数
     const loop = () => {
-      const { engineData } = useEngineStore.getState();
-      
-      if (engineData.memory && engineData.memory.buffer && engineData.count > bodyIndex) {
-        try {
-          const posView = new Float64Array(engineData.memory.buffer, engineData.posPtr, engineData.count * 3);
-          const localVelView = new Float64Array(engineData.memory.buffer, engineData.localVelPtr, engineData.count * 3);
-          const parentView = new Int32Array(engineData.memory.buffer, engineData.parentPtr, engineData.count);
+      const data = telemetryRef.current;
+      if (!data) { frameId = requestAnimationFrame(loop); return; }
 
-          const px = posView[bodyIndex * 3];
-          const py = posView[bodyIndex * 3 + 1];
-          const pz = posView[bodyIndex * 3 + 2];
+      if (xRef.current) xRef.current.innerText = data.px.toFixed(2);
+      if (yRef.current) yRef.current.innerText = data.py.toFixed(2);
+      if (zRef.current) zRef.current.innerText = data.pz.toFixed(2);
+      if (velRef.current) velRef.current.innerText = data.speed.toFixed(3) + ' m/s';
 
-          const vx_vis = localVelView[bodyIndex * 3];
-          const vy_vis = localVelView[bodyIndex * 3 + 1];
-          const vz_vis = localVelView[bodyIndex * 3 + 2];
-          const speed = Math.sqrt(vx_vis * vx_vis + vy_vis * vy_vis + vz_vis * vz_vis);
+      const parentBody = bodies.find(b => b.id === data.parentId);
 
-          const currentParentId = parentView[bodyIndex];
-          const parentBody = bodies.find(b => b.id === currentParentId);
-
-          if (xRef.current) xRef.current.innerText = px.toFixed(2);
-          if (yRef.current) yRef.current.innerText = py.toFixed(2);
-          if (zRef.current) zRef.current.innerText = pz.toFixed(2);
-          if (velRef.current) velRef.current.innerText = speed.toFixed(3) + " m/s";
-
-          if (parentBody) {
-            if (velNameRef.current) velNameRef.current.innerText = `Velocity (${t(parentBody.name)})`;
-
-            const ppx = posView[currentParentId * 3];
-            const ppy = posView[currentParentId * 3 + 1];
-            const ppz = posView[currentParentId * 3 + 2];
-
-            const rx = px - ppx;
-            const ry = py - ppy;
-            const rz = pz - ppz;
-            const r = Math.sqrt(rx * rx + ry * ry + rz * rz);
-
-            const vx = localVelView[bodyIndex * 3];
-            const vy = localVelView[bodyIndex * 3 + 1];
-            const vz = localVelView[bodyIndex * 3 + 2];
-
-            const mu = PHYSICS_CONSTANTS.G * parentBody.MASS;
-            const energy = speed * speed / 2.0 - mu / r;
-            const sma = energy !== 0 ? -mu / (2.0 * energy) : 1e9;
-
-            // 计算角动量向量 (Angular momentum vector)
-            const hx = ry * vz - rz * vy;
-            const hy = rz * vx - rx * vz;
-            const hz = rx * vy - ry * vx;
-
-            // 计算偏心率向量 (Eccentricity vector)
-            const v_cross_hx = vy * hz - vz * hy;
-            const v_cross_hy = vz * hx - vx * hz;
-            const v_cross_hz = vx * hy - vy * hx;
-
-            const ex = v_cross_hx / mu - rx / r;
-            const ey = v_cross_hy / mu - ry / r;
-            const ez = v_cross_hz / mu - rz / r;
-            const ecc = Math.sqrt(ex * ex + ey * ey + ez * ez);
-
-            // 轨道近点与远点计算
-            const pe = Math.abs(sma) * Math.abs(1 - ecc);
-            const ap = sma > 0 ? sma * (1 + ecc) : -1;
-
-            const alt = r - parentBody.radius;
-            const peAlt = pe - parentBody.radius;
-            const apAlt = ap > 0 ? ap - parentBody.radius : -1;
-
-            // 更新面板 DOM
-            if (smaRef.current) smaRef.current.innerText = sma > 0 ? formatUnit(sma) : "Escape";
-            if (eccRef.current) eccRef.current.innerText = ecc.toFixed(5);
-            if (peRef.current) peRef.current.innerText = formatUnit(peAlt);
-            if (apRef.current) apRef.current.innerText = apAlt > 0 ? formatUnit(apAlt) : "Escape";
-            if (altRef.current) altRef.current.innerText = formatUnit(alt);
-
-            if (periodRef.current) {
-              if (ecc >= 1.0 || sma <= 0) {
-                periodRef.current.innerText = "Escape";
-              } else {
-                const periodSeconds = 2 * Math.PI * Math.sqrt(Math.pow(sma, 3) / mu);
-                periodRef.current.innerText = formatTime(periodSeconds);
-              }
-            }
-          } else {
-            // 当选中中心恒星时的清空处理
-            if (velNameRef.current) velNameRef.current.innerText = "Velocity (Absolute)";
-            if (smaRef.current) smaRef.current.innerText = "Center of Universe";
-            if (eccRef.current) eccRef.current.innerText = "0.000";
-            if (peRef.current) peRef.current.innerText = "--";
-            if (apRef.current) apRef.current.innerText = "--";
-            if (altRef.current) altRef.current.innerText = "--";
-            if (periodRef.current) periodRef.current.innerText = "Center of Universe";
-          }
-        } catch (e) {
-          // 忽略底层扩容导致的临时内存访问异常
+      if (parentBody) {
+        if (velNameRef.current && data.parentId !== lastParentId) {
+          velNameRef.current.innerText = `Velocity (${t(parentBody.name)})`;
+          lastParentId = data.parentId;
         }
+
+        if (smaRef.current) smaRef.current.innerText = data.sma > 0 ? formatUnit(data.sma) : 'Escape';
+        if (eccRef.current) eccRef.current.innerText = data.ecc.toFixed(5);
+        if (peRef.current) peRef.current.innerText = formatUnit(data.peAlt);
+        if (apRef.current) apRef.current.innerText = data.apAlt > 0 ? formatUnit(data.apAlt) : 'Escape';
+        if (altRef.current) altRef.current.innerText = formatUnit(data.alt);
+
+        if (periodRef.current) {
+          if (data.ecc >= 1.0 || data.sma <= 0) {
+            periodRef.current.innerText = 'Escape';
+          } else {
+            periodRef.current.innerText = formatTime(data.period);
+          }
+        }
+      } else {
+        if (velNameRef.current) velNameRef.current.innerText = 'Velocity (Absolute)';
+        if (smaRef.current) smaRef.current.innerText = 'Center of Universe';
+        if (eccRef.current) eccRef.current.innerText = '0.000';
+        if (peRef.current) peRef.current.innerText = '--';
+        if (apRef.current) apRef.current.innerText = '--';
+        if (altRef.current) altRef.current.innerText = '--';
+        if (periodRef.current) periodRef.current.innerText = 'Center of Universe';
       }
+
       frameId = requestAnimationFrame(loop);
     };
-    
+
     loop();
     return () => cancelAnimationFrame(frameId);
   }, [selectedBodyId, bodies, t]);

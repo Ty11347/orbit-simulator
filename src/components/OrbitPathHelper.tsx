@@ -3,6 +3,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Line } from '@react-three/drei';
 import { RENDER_SCALE } from './SolarSystem';
+import { physicsToRender } from '../utils/coords';
 
 // =========================================================================
 // 全局轨道渲染配置常量
@@ -49,7 +50,6 @@ export function OrbitPathHelper({
   );
 
   const points = useMemo(() => {
-    const points3d = [];
     const isHyperbola = ECC >= 1.0;
 
     const absA = Math.abs(SMA) / RENDER_SCALE; // 渲染尺寸
@@ -112,7 +112,8 @@ export function OrbitPathHelper({
       const y = px * (so * cw + co * sw * ci) + py * (co * cw * ci - so * sw);
       const z = px * (sw * si) + py * (cw * si);
 
-      pts[validCount].set(x, z, -y);
+      const [rx, ry, rz] = physicsToRender(x, y, z, 1);
+      pts[validCount].set(rx, ry, rz);
       validCount++;
     }
 

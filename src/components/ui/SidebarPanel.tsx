@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useEngineStore } from '../../store/useEngineStore';
+import { useUIStore } from '../../store/useUIStore';
 import { useTranslation } from '../../hooks/useTranslation';
 
 // 左侧实体导航面板
 export function SidebarPanel() {
-  const { bodies, deleteBody, selectedBodyId, setSelectedBody, setAddModalOpen, setFocusMode } = useEngineStore();
+  const { bodies, deleteBody } = useEngineStore();
+  const { selectedBodyId, setSelectedBody, setAddModalOpen, setFocusMode } = useUIStore();
   const { t } = useTranslation();
   
   // 组件状态管理
@@ -39,7 +41,7 @@ export function SidebarPanel() {
                 <span className="item-name">{t(body.name)}</span>
               </div>
               {body.id !== 0 && (
-                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); deleteBody(body.id); }}>{t('ui.destroy')}</button>
+                <button className="delete-btn" onClick={(e) => { e.stopPropagation(); const deletedId = deleteBody(body.id); if (deletedId === selectedBodyId) setSelectedBody(null); }}>{t('ui.destroy')}</button>
               )}
             </div>
           ))}

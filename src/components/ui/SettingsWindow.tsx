@@ -1,12 +1,13 @@
-import { useEngineStore } from '../../store/useEngineStore';
+import { useEngineStore, AVAILABLE_SYSTEMS } from '../../store/useEngineStore';
+import { useUIStore } from '../../store/useUIStore';
 import { useTranslation, AVAILABLE_LANGUAGES } from '../../hooks/useTranslation';
 import { useNativeDrag } from '../../hooks/useNativeDrag';
-import { AVAILABLE_SYSTEMS } from '../../data/systemsLoader';
 
 // 全局设置悬浮窗组件
 export function SettingsWindow() {
   const { t, language } = useTranslation();
-  const { isSettingsWindowOpen, setSettingsWindowOpen, loadSystem, setLanguage } = useEngineStore();
+  const loadSystem = useEngineStore(state => state.loadSystem);
+  const { isSettingsWindowOpen, setSettingsWindowOpen, setLanguage } = useUIStore();
 
   const panelRef = useNativeDrag(isSettingsWindowOpen);
 

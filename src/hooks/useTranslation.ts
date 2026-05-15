@@ -1,4 +1,4 @@
-import { useEngineStore } from '../store/useEngineStore';
+import { useUIStore } from '../store/useUIStore';
 
 // 动态扫描所有语言包
 const rawLocales = import.meta.glob('../locales/*.json', { eager: true });
@@ -13,7 +13,7 @@ Object.keys(rawLocales).forEach((path) => {
 });
 
 export function useTranslation() {
-  const language = useEngineStore((state) => state.language);
+  const language = useUIStore((state) => state.language);
   
   const t = (key: string) => {
     return dictionaries[language]?.[key] || key;
