@@ -52,6 +52,7 @@ interface EngineState {
   deleteBody: (id: number) => number | null;
   loadSystem: (newBodies: CelestialBody[]) => void;
   toggleBurn: (id: number) => void;
+  syncBodyParent: (updates: Array<{ id: number; parentId: number; sma: number; ecc: number; inc: number; lan: number; aop: number }>) => void;
 
   engineData: { posPtr: number; velPtr: number; localVelPtr: number; parentPtr: number; count: number; memory: WebAssembly.Memory | null };
   setEngineData: (data: { posPtr: number; velPtr: number; localVelPtr: number; parentPtr: number; count: number; memory: WebAssembly.Memory | null }) => void;
@@ -115,6 +116,18 @@ export const useEngineStore = create<EngineState>((set) => ({
     nextId: Math.max(...newBodies.map(b => b.id), 0) + 1,
     systemVersion: state.systemVersion + 1,
   })),
+
+  syncBodyParent: (updates) => set((state) => {
+    if (updates.length === 0) return state;
+    const updateMap = new Map(updates.map(u => [u.id, u]));
+    return {
+      bodies: state.bodies.map(b => {
+        const u = updateMap.get(b.id);
+        if (!u) return b;
+        return { ...b, parentId: u.parentId, SMA: u.sma, ECC: u.ecc, INC: u.inc, LAN: u.lan, AOP: u.aop };
+      }),
+    };
+  }),
 
   engineData: { posPtr: 0, velPtr: 0, localVelPtr: 0, parentPtr: 0, count: 0, memory: null },
   setEngineData: (data) => set({ engineData: data }),

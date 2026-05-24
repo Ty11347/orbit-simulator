@@ -3,8 +3,10 @@ import { useEngineStore } from '../../store/useEngineStore';
 import { useUIStore } from '../../store/useUIStore';
 import { useTranslation } from '../../hooks/useTranslation';
 import { useNativeDrag } from '../../hooks/useNativeDrag';
-import { formatUnit, formatTime } from '../../utils/formatters';
+import { formatUnit, formatTime, formatMass, formatSpeed } from '../../utils/formatters';
 import { telemetryRef } from '../../utils/telemetry';
+
+const DASH = '--';
 
 export function DetailPanelWindow() {
   const bodies = useEngineStore(state => state.bodies);
@@ -12,70 +14,106 @@ export function DetailPanelWindow() {
   const { t } = useTranslation();
   const panelRef = useNativeDrag(selectedBodyId);
 
-  const xRef = useRef<HTMLSpanElement>(null);
-  const yRef = useRef<HTMLSpanElement>(null);
-  const zRef = useRef<HTMLSpanElement>(null);
-  const velRef = useRef<HTMLSpanElement>(null);
-  const velNameRef = useRef<HTMLSpanElement>(null);
-  const smaRef = useRef<HTMLSpanElement>(null);
-  const eccRef = useRef<HTMLSpanElement>(null);
-  const apRef = useRef<HTMLSpanElement>(null);
-  const peRef = useRef<HTMLSpanElement>(null);
-  const altRef = useRef<HTMLSpanElement>(null);
-  const periodRef = useRef<HTMLSpanElement>(null);
+  const refs = {
+    sma: useRef<HTMLSpanElement>(null),
+    ap:   useRef<HTMLSpanElement>(null),
+    pe:   useRef<HTMLSpanElement>(null),
+    ecc:  useRef<HTMLSpanElement>(null),
+    alt:  useRef<HTMLSpanElement>(null),
+    period: useRef<HTMLSpanElement>(null),
+    px:   useRef<HTMLSpanElement>(null),
+    py:   useRef<HTMLSpanElement>(null),
+    pz:   useRef<HTMLSpanElement>(null),
+    vel:  useRef<HTMLSpanElement>(null),
+    velName: useRef<HTMLSpanElement>(null),
+  };
+
+  const i18nRef = useRef({ velocity: '', escape: '', centerOfUniverse: '', zeroEcc: '0.000' });
+  i18nRef.current = {
+    velocity: t('ui.telemetry.velocity'),
+    escape: t('ui.telemetry.escape'),
+    centerOfUniverse: t('ui.telemetry.centerOfUniverse'),
+    zeroEcc: '0.000',
+  };
+
+  const G = 6.67430e-11;
+
+  const writeTelemetry = (data: any, currentBodies: any[], selBody: any) => {
+    const i18n = i18nRef.current;
+    const w = (r: React.RefObject<HTMLSpanElement | null>, v: string) => { if (r.current) r.current.innerText = v; };
+
+    w(refs.px, data.px.toFixed(2));
+    w(refs.py, data.py.toFixed(2));
+    w(refs.pz, data.pz.toFixed(2));
+    w(refs.vel, formatSpeed(data.speed));
+
+    const parentBody = currentBodies.find((b: any) => b.id === data.parentId);
+    if (parentBody) {
+      w(refs.velName, `${i18n.velocity} (${t(parentBody.name)})`);
+
+      // 静态天体（非载具）直接用 JSON 中存储的 Kepler 参数，免除每帧浮点反推误差
+      if (selBody && selBody.type !== 'VEHICLE') {
+        const sma = selBody.SMA;
+        const ecc = selBody.ECC;
+        const peAlt = sma * (1 - ecc) - parentBody.radius;
+        const apAlt = sma * (1 + ecc) - parentBody.radius;
+        const mu = G * parentBody.MASS;
+        const period = 2 * Math.PI * Math.sqrt(Math.pow(sma, 3) / mu);
+
+        w(refs.sma, formatUnit(sma));
+        w(refs.ecc, ecc.toFixed(5));
+        w(refs.pe, formatUnit(peAlt));
+        w(refs.ap, formatUnit(apAlt));
+        w(refs.alt, formatUnit(data.alt));
+        w(refs.period, formatTime(period));
+      } else {
+        w(refs.sma, data.sma > 0 ? formatUnit(data.sma) : i18n.escape);
+        w(refs.ecc, data.ecc.toFixed(5));
+        w(refs.pe, formatUnit(data.peAlt));
+        w(refs.ap, data.apAlt > 0 ? formatUnit(data.apAlt) : i18n.escape);
+        w(refs.alt, formatUnit(data.alt));
+        w(refs.period, (data.ecc >= 1.0 || data.sma <= 0) ? i18n.escape : formatTime(data.period));
+      }
+    } else {
+      w(refs.velName, '');
+      w(refs.sma, i18n.centerOfUniverse);
+      w(refs.ecc, i18n.zeroEcc);
+      w(refs.pe, DASH);
+      w(refs.ap, DASH);
+      w(refs.alt, DASH);
+      w(refs.period, i18n.centerOfUniverse);
+    }
+  };
 
   useEffect(() => {
     if (selectedBodyId === null) return;
 
     let frameId: number;
-    let lastParentId = -1;
+
+    // 挂载时立即同步写入：若遥测已缓存且匹配当前天体，零延迟填充，消除首次 mount 的空→数据闪动
+    const cached = telemetryRef.current;
+    if (cached && cached.bodyId === selectedBodyId) {
+      const sel = useEngineStore.getState().bodies.find((b: any) => b.id === selectedBodyId);
+      writeTelemetry(cached, useEngineStore.getState().bodies, sel);
+    }
 
     const loop = () => {
+      const currentBodies = useEngineStore.getState().bodies;
+      if (!currentBodies.find(b => b.id === selectedBodyId)) return;
+
       const data = telemetryRef.current;
-      if (!data) { frameId = requestAnimationFrame(loop); return; }
-
-      if (xRef.current) xRef.current.innerText = data.px.toFixed(2);
-      if (yRef.current) yRef.current.innerText = data.py.toFixed(2);
-      if (zRef.current) zRef.current.innerText = data.pz.toFixed(2);
-      if (velRef.current) velRef.current.innerText = data.speed.toFixed(3) + ' m/s';
-
-      const parentBody = bodies.find(b => b.id === data.parentId);
-
-      if (parentBody) {
-        if (velNameRef.current && data.parentId !== lastParentId) {
-          velNameRef.current.innerText = `Velocity (${t(parentBody.name)})`;
-          lastParentId = data.parentId;
-        }
-
-        if (smaRef.current) smaRef.current.innerText = data.sma > 0 ? formatUnit(data.sma) : 'Escape';
-        if (eccRef.current) eccRef.current.innerText = data.ecc.toFixed(5);
-        if (peRef.current) peRef.current.innerText = formatUnit(data.peAlt);
-        if (apRef.current) apRef.current.innerText = data.apAlt > 0 ? formatUnit(data.apAlt) : 'Escape';
-        if (altRef.current) altRef.current.innerText = formatUnit(data.alt);
-
-        if (periodRef.current) {
-          if (data.ecc >= 1.0 || data.sma <= 0) {
-            periodRef.current.innerText = 'Escape';
-          } else {
-            periodRef.current.innerText = formatTime(data.period);
-          }
-        }
-      } else {
-        if (velNameRef.current) velNameRef.current.innerText = 'Velocity (Absolute)';
-        if (smaRef.current) smaRef.current.innerText = 'Center of Universe';
-        if (eccRef.current) eccRef.current.innerText = '0.000';
-        if (peRef.current) peRef.current.innerText = '--';
-        if (apRef.current) apRef.current.innerText = '--';
-        if (altRef.current) altRef.current.innerText = '--';
-        if (periodRef.current) periodRef.current.innerText = 'Center of Universe';
+      if (!data || data.bodyId !== selectedBodyId) {
+        frameId = requestAnimationFrame(loop);
+        return;
       }
-
+      const sel = currentBodies.find((b: any) => b.id === selectedBodyId);
+      writeTelemetry(data, currentBodies, sel);
       frameId = requestAnimationFrame(loop);
     };
 
-    loop();
+    frameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(frameId);
-  }, [selectedBodyId, bodies, t]);
+  }, [selectedBodyId]);
 
   if (selectedBodyId === null) return null;
   const selectedBody = bodies.find(b => b.id === selectedBodyId);
@@ -97,23 +135,18 @@ export function DetailPanelWindow() {
           <button className="close-btn" onClick={() => setSelectedBody(null)} />
         </div>
         <div className="compact-form" style={{ padding: '10px 15px' }}>
-
-          <div className="data-row"><span className="key">{t('ui.mass')}</span><span className="val">{selectedBody.MASS.toFixed(2)} kg</span></div>
-
-          <div className="data-row"><span className="key">SMA</span><span className="val" ref={smaRef}>--</span></div>
-          <div className="data-row"><span className="key" style={{ color: '#ffaaaa' }}>Apoapsis (Ap)</span><span className="val" ref={apRef}>--</span></div>
-          <div className="data-row"><span className="key" style={{ color: '#aaffaa' }}>Periapsis (Pe)</span><span className="val" ref={peRef}>--</span></div>
-          <div className="data-row"><span className="key">Eccentricity</span><span className="val" ref={eccRef}>--</span></div>
-          <div className="data-row"><span className="key">Altitude</span><span className="val" ref={altRef}>--</span></div>
-          <div className="data-row"><span className="key">Period</span><span className="val" ref={periodRef}>--</span></div>
-
+          <div className="data-row"><span className="key">{t('ui.mass')}</span><span className="val">{formatMass(selectedBody.MASS)}</span></div>
+          <div className="data-row"><span className="key">{t('ui.telemetry.sma')}</span><span className="val" ref={refs.sma}>{DASH}</span></div>
+          <div className="data-row"><span className="key" style={{ color: '#ffaaaa' }}>{t('ui.telemetry.ap')}</span><span className="val" ref={refs.ap}>{DASH}</span></div>
+          <div className="data-row"><span className="key" style={{ color: '#aaffaa' }}>{t('ui.telemetry.pe')}</span><span className="val" ref={refs.pe}>{DASH}</span></div>
+          <div className="data-row"><span className="key">{t('ui.telemetry.ecc')}</span><span className="val" ref={refs.ecc}>{DASH}</span></div>
+          <div className="data-row"><span className="key">{t('ui.telemetry.alt')}</span><span className="val" ref={refs.alt}>{DASH}</span></div>
+          <div className="data-row"><span className="key">{t('ui.telemetry.period')}</span><span className="val" ref={refs.period}>{DASH}</span></div>
           <div style={{ borderTop: '1px solid #334155', margin: '8px 0' }}></div>
-
-          <div className="data-row"><span className="key" style={{ color: '#ff4444' }}>Pos X</span><span className="val" ref={xRef} style={{ fontWeight: 'bold' }}>--</span></div>
-          <div className="data-row"><span className="key" style={{ color: '#44ff44' }}>Pos Y</span><span className="val" ref={yRef} style={{ fontWeight: 'bold' }}>--</span></div>
-          <div className="data-row"><span className="key" style={{ color: '#4444ff' }}>Pos Z</span><span className="val" ref={zRef} style={{ fontWeight: 'bold' }}>--</span></div>
-          <div className="data-row"><span className="key" style={{ color: '#00ff88' }} ref={velNameRef}>Velocity</span><span className="val" ref={velRef} style={{ fontWeight: 'bold', color: '#00ff88' }}>--</span></div>
-
+          <div className="data-row"><span className="key" style={{ color: '#ff4444' }}>{t('ui.telemetry.posX')}</span><span className="val" ref={refs.px} style={{ fontWeight: 'bold' }}>{DASH}</span></div>
+          <div className="data-row"><span className="key" style={{ color: '#44ff44' }}>{t('ui.telemetry.posY')}</span><span className="val" ref={refs.py} style={{ fontWeight: 'bold' }}>{DASH}</span></div>
+          <div className="data-row"><span className="key" style={{ color: '#4444ff' }}>{t('ui.telemetry.posZ')}</span><span className="val" ref={refs.pz} style={{ fontWeight: 'bold' }}>{DASH}</span></div>
+          <div className="data-row"><span className="key" style={{ color: '#00ff88' }} ref={refs.velName}>{t('ui.telemetry.velocity')}</span><span className="val" ref={refs.vel} style={{ fontWeight: 'bold', color: '#00ff88' }}>{DASH}</span></div>
           <div className="data-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginTop: '10px' }}>
             {selectedBody.type === 'VEHICLE' ? (
               <button
@@ -126,9 +159,9 @@ export function DetailPanelWindow() {
                   boxShadow: '0 2px 4px rgba(0,0,0,0.5)'
                 }}
               >
-                {selectedBody.isBurning ? '[ 引擎工作中 ] (点击熄火)' : '[ 引擎已关闭 ] (点击点火)'}
+                {selectedBody.isBurning ? t('ui.engine.burning') : t('ui.engine.idle')}
               </button>
-            ) : <span className="val" style={{ width: '100%', textAlign: 'center', color: '#666' }}>No Engine</span>}
+            ) : <span className="val" style={{ width: '100%', textAlign: 'center', color: '#666' }}>{t('ui.telemetry.noEngine')}</span>}
           </div>
         </div>
       </div>

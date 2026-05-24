@@ -1,4 +1,5 @@
 export interface TelemetryData {
+  bodyId: number;
   px: number;
   py: number;
   pz: number;
@@ -40,7 +41,7 @@ export function computeTelemetry(
   const parentBody = bodies.find(b => b.id === currentParentId);
 
   if (!parentBody) {
-    return { px, py, pz, speed, sma: 0, ecc: 0, peAlt: 0, apAlt: 0, alt: 0, period: 0, parentId: -1 };
+    return { bodyId: bodies[bodyIndex].id, px, py, pz, speed, sma: 0, ecc: 0, peAlt: 0, apAlt: 0, alt: 0, period: 0, parentId: -1 };
   }
 
   const ppx = posView[currentParentId * 3];
@@ -80,7 +81,7 @@ export function computeTelemetry(
     period = 2 * Math.PI * Math.sqrt(Math.pow(sma, 3) / mu);
   }
 
-  return { px, py, pz, speed, sma, ecc, peAlt, apAlt, alt, period, parentId: currentParentId };
+  return { bodyId: bodies[bodyIndex].id, px, py, pz, speed, sma, ecc, peAlt, apAlt, alt, period, parentId: currentParentId };
 }
 
 export function clearTelemetry() {

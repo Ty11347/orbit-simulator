@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useEngineStore, TIME_TIERS } from '../../store/useEngineStore';
+import { useTranslation } from '../../hooks/useTranslation';
 
-// 顶部时间流速控制器
 export function TimeControlBar() {
   const { timeScale, timeTierIndex, isPaused, togglePause, setTimeTierIndex, setCustomTimeScale } = useEngineStore();
+  const { t } = useTranslation();
   const [inputValue, setInputValue] = useState(timeScale.toString());
 
   // 确保输入框内容与全局状态同步
@@ -34,7 +35,7 @@ export function TimeControlBar() {
   return (
     <div className="ksp-time-bar floating-panel" style={{ flexDirection: 'row' }}>
       <button className={`play-pause-square ${isPaused ? 'paused' : 'playing'}`} onClick={togglePause}>
-        {isPaused ? '播放' : '暂停'}
+        {isPaused ? t('ui.time.pause') : t('ui.time.play')}
       </button>
 
       <div className="warp-triangles">

@@ -556,7 +556,7 @@ impl PhysicsEngine {
             if p_idx < self.bodies.len() {
                 let mu = G * self.bodies[p_idx].mass;
                 let n_mean = if (ecc - 1.0).abs() < 1e-7 { 2.0 * (mu / (2.0 * p.powi(3))).sqrt() } else { (mu / sma.abs().powi(3)).sqrt() };
-                m0 = m0 - n_mean * self.time;
+                m0 = m0 + n_mean * self.time;
             }
         }
         let body = Body { mass, sma, ecc, inc, lan, aop, m0, epoch: self.time, parent_index, soi_radius, is_simulated, is_burning: false, p };
@@ -654,6 +654,11 @@ impl PhysicsEngine {
             }
         }
         patches
+    }
+
+    pub fn get_body_kepler(&self, idx: usize) -> Vec<f64> {
+        let b = &self.bodies[idx];
+        vec![b.parent_index as f64, b.sma, b.ecc, b.inc, b.lan, b.aop]
     }
 
     #[wasm_bindgen]

@@ -3,6 +3,7 @@ import { OrbitControls, Stars, Stats } from '@react-three/drei';
 import { SolarSystem } from './components/SolarSystem';
 import { useUIStore } from './store/useUIStore';
 import { useSpacebarToggle } from './hooks/useSpacebarToggle';
+import { useTranslation } from './hooks/useTranslation';
 
 import { SettingsWindow } from './components/ui/SettingsWindow';
 import { AddEntityWindow } from './components/ui/AddEntityWindow';
@@ -14,6 +15,7 @@ import './App.css';
 
 function App() {
   const setSettingsWindowOpen = useUIStore(state => state.setSettingsWindowOpen);
+  const { t } = useTranslation();
 
   // 注册全局空格键暂停监听器
   useSpacebarToggle();
@@ -54,7 +56,7 @@ function App() {
         onMouseOver={(e) => e.currentTarget.style.background = '#4da8da'}
         onMouseOut={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.5)'}
       >
-        设置
+        {t('ui.settings.button')}
       </button>
 
       {/* R3F 核心 3D 渲染图层 */}
