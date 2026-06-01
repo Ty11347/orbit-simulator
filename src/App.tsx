@@ -17,40 +17,36 @@ function App() {
   const setSettingsWindowOpen = useUIStore(state => state.setSettingsWindowOpen);
   const { t } = useTranslation();
 
-  // 注册全局空格键暂停监听器
+  // Register global spacebar pause/play listener
   useSpacebarToggle();
 
   return (
     <div style={{ width: '100vw', height: '100vh', backgroundColor: '#050505' }}>
       
-      {/* 所有的 UI 覆盖层组件 */}
+      {/* UI overlay components */}
       <TimeControlBar />
       <SidebarPanel />
       <AddEntityWindow />
       <DetailPanelWindow />
       <SettingsWindow />
 
-      {/* 右上角独立配置唤出按钮 */}
+      {/* Settings toggle button (top-right) */}
       <button
         className="settings-toggle-btn"
         onClick={() => setSettingsWindowOpen(true)}
         style={{
           position: 'absolute',
-          top: '20px', 
-          right: '20px', 
-          zIndex: 100, 
-          background: 'rgba(0,0,0,0.5)', 
+          top: '20px',
+          right: '20px',
+          zIndex: 100,
+          background: 'rgba(0,0,0,0.5)',
           borderRadius: '4px',
-          color: '#fff', 
+          color: '#fff',
           border: '1px solid rgba(77, 168, 218, 0.3)',
-          width: '32px', 
-          height: '32px', 
-          cursor: 'pointer', 
+          padding: '6px 10px',
+          cursor: 'pointer',
           outline: 'none',
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          fontSize: '12px', 
+          fontSize: '12px',
           transition: 'all 0.2s'
         }}
         onMouseOver={(e) => e.currentTarget.style.background = '#4da8da'}
@@ -59,7 +55,7 @@ function App() {
         {t('ui.settings.button')}
       </button>
 
-      {/* R3F 核心 3D 渲染图层 */}
+      {/* R3F 3D rendering layer */}
       <Canvas 
         camera={{ position: [0, 800, 2000], fov: 45, far: 1e10 }} 
         gl={{ logarithmicDepthBuffer: true, antialias: true }} 

@@ -6,7 +6,7 @@ function toSuperscript(exp: number): string {
   return sign + digits;
 }
 
-// 科学记数法：mantissa 已是最高层级单位下的值，在此之上取对数得指数
+// Scientific notation: mantissa is already in the highest tier unit; take log10 to get the exponent
 function formatSci(mantissa: number, unit: string): string {
   const absM = Math.abs(mantissa);
   if (absM === 0) return `0 ${unit}`;
@@ -16,7 +16,7 @@ function formatSci(mantissa: number, unit: string): string {
   return `${stripped}×10${toSuperscript(exp)} ${unit}`;
 }
 
-// ==================== 距离 ====================
+// ==================== Distance ====================
 
 const DISTANCE_UNITS = [
   { threshold: 1e9, divisor: 1e9, suffix: 'Gm' },
@@ -44,7 +44,7 @@ export function formatUnit(val: number): string {
   return val.toFixed(2) + " m";
 }
 
-// ==================== 时间 ====================
+// ==================== Time ====================
 
 export function formatTime(totalSeconds: number): string {
   if (totalSeconds === Infinity || isNaN(totalSeconds) || totalSeconds < 0) return "Escape";
@@ -74,7 +74,7 @@ export function formatTime(totalSeconds: number): string {
   return `${s}s`;
 }
 
-// ==================== 速度 ====================
+// ==================== Speed ====================
 
 const SPEED_UNITS = [
   { threshold: 1e6, divisor: 1e6, suffix: 'Mm/s' },
@@ -87,7 +87,7 @@ export function formatSpeed(val: number): string {
 
   const absVal = Math.abs(val);
 
-  // ≥ 10⁹ m/s → 科学记数法，底数以 Mm/s 表示
+  // >= 1e9 m/s → scientific notation with Mm/s base
   if (absVal >= 1e9) {
     return formatSci(val / 1e6, 'Mm/s');
   }
@@ -104,7 +104,7 @@ export function formatSpeed(val: number): string {
   return `${stripped} m/s`;
 }
 
-// ==================== 质量 ====================
+// ==================== Mass ====================
 
 const MASS_UNITS = [
   { threshold: 1e18, divisor: 1e18, suffix: 'Pt' },
@@ -121,7 +121,7 @@ export function formatMass(val: number): string {
 
   const absVal = Math.abs(val);
 
-  // ≥ 10²¹ kg → 科学记数法，底数以 Pt 表示
+  // >= 1e21 kg → scientific notation with Pt base
   if (absVal >= 1e21) {
     return formatSci(val / 1e18, 'Pt');
   }

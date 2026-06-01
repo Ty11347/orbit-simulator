@@ -1,15 +1,15 @@
 /* =========================================================
-   全局变量定义区 (Single Source of Truth)
+   CSS Custom Properties (Single Source of Truth)
    ========================================================= */
 :root {
-  /* 背景颜色 */
+  /* Background colors */
   --bg-main: #050505;
   --bg-panel-glass: rgba(10, 15, 20, 0.95);
   --bg-panel-solid: #0f141e;
   --bg-input: rgba(0, 0, 0, 0.5);
   --bg-tab-header: #080c10;
 
-  /* 强调色 (提供 RGB 变量以便于 rgba 透明度计算) */
+  /* Accent colors (RGB variants for rgba() transparency) */
   --color-blue-rgb: 77, 168, 218;
   --color-blue: #4da8da;
   --color-blue-hover: #3c8ebd;
@@ -23,24 +23,24 @@
 
   --color-orange: #ffaa00;
 
-  /* 文本颜色 */
+  /* Text colors */
   --text-main: #ffffff;
   --text-muted: #a0aab5;
   --text-dark: #666666;
 
-  /* 边框与分割线颜色 */
+  /* Border & divider colors */
   --border-light: rgba(var(--color-blue-rgb), 0.3);
   --border-dark: #334155;
   --border-tab: #222222;
   --divider-color: #2a3441;
 
-  /* 字体族 */
+  /* Font families */
   --font-main: 'Inter', sans-serif;
   --font-mono: 'Courier New', Courier, monospace;
 }
 
 /* =========================================================
-   基础重置与浏览器修正
+   Base Reset & Browser Normalization
    ========================================================= */
 * {
   box-sizing: border-box;
@@ -57,20 +57,20 @@ html, body, #root {
   color: var(--text-main);
 }
 
-/* 隐藏 Number 类型的上下箭头 (Chrome, Safari, Edge, Opera) */
+/* Hide number input spin buttons (Chrome, Safari, Edge, Opera) */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 
-/* 隐藏 Number 类型的上下箭头 (Firefox) */
+/* Hide number input spin buttons (Firefox) */
 input[type="number"] {
   -moz-appearance: textfield;
 }
 
 /* =========================================================
-   通用组件：悬浮面板与拖拽把手
+   Shared Components: Floating Panels & Drag Handle
    ========================================================= */
 .floating-panel {
   background: var(--bg-panel-glass);
@@ -121,7 +121,7 @@ input[type="number"] {
 }
 
 /* =========================================================
-   业务模块：顶部时间控制条
+   Module: Time Control Bar
    ========================================================= */
 .ksp-time-bar {
   position: absolute;
@@ -135,17 +135,18 @@ input[type="number"] {
 }
 
 .play-pause-square {
-  width: 24px; 
-  height: 24px; 
-  display: flex; 
-  align-items: center; 
+  min-width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  background: #1a222c; 
-  border: 1px solid var(--color-blue); 
+  padding: 0 5px;
+  background: #1a222c;
+  border: 1px solid var(--color-blue);
   color: var(--color-blue);
-  border-radius: 3px; 
-  cursor: pointer; 
-  font-size: 10px; 
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
   transition: 0.2s;
 }
 
@@ -212,7 +213,7 @@ input[type="number"] {
 }
 
 /* =========================================================
-   业务模块：左侧边栏与实体列表
+   Module: Sidebar & Entity List
    ========================================================= */
 .sidebar-container {
   position: absolute; 
@@ -367,7 +368,7 @@ input[type="number"] {
 }
 
 /* =========================================================
-   业务模块：实体表单 (Add Entity)
+   Module: Entity Form (Add Entity)
    ========================================================= */
 .compact-form { 
   padding: 10px 15px; 
@@ -452,7 +453,7 @@ input[type="number"] {
 }
 
 /* =========================================================
-   业务模块：右侧遥测详情面板 (Telemetry)
+   Module: Telemetry Detail Panel
    ========================================================= */
 .detail-panel {
   min-width: 200px;
@@ -492,7 +493,7 @@ input[type="number"] {
 }
 
 /* =========================================================
-   业务模块：设置项面板 (Settings)
+   Module: Settings Panel
    ========================================================= */
 .settings-panel {
   background-color: var(--bg-panel-solid) !important; 
@@ -559,7 +560,7 @@ input[type="number"] {
 }
 
 /* =========================================================
-   其它工具类样式
+   Utility Styles
    ========================================================= */
 .perf-radar {
   position: absolute !important;

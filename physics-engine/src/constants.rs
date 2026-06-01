@@ -1,29 +1,29 @@
-// 真实的万有引力常数 (国际单位制: m^3 kg^-1 s^-2)
+// Newtonian gravitational constant (SI units: m^3 kg^-1 s^-2)
 pub const G: f64 = 6.67430e-11;
 
-// --- 数值容差边界值 ---
-// 用于避免浮点数计算错误或除零异常
-pub const EPSILON_DISTANCE: f64 = 1e-6;          // 距离极小值容差
-pub const EPSILON_VELOCITY: f64 = 1e-6;          // 速度极小值容差
-pub const EPSILON_ECCENTRICITY: f64 = 1e-8;      // 偏心率极小值容差
-pub const EPSILON_NODE: f64 = 1e-8;              // 升交点向量计算极小值容差
-// pub const EPSILON_ENERGY: f64 = 1e-9;            // 轨道比能量极小值容差
-// pub const EPSILON_MATH_DENOMINATOR: f64 = 1e-12; // 数学运算分母极小值容差
-// pub const EPSILON_GRAVITY_DISTANCE: f64 = 1e-9;  // 万有引力计算距离容差
+// --- Numerical tolerance thresholds ---
+// Guard values against floating-point errors and division-by-zero
+pub const EPSILON_DISTANCE: f64 = 1e-6;          // Minimum distance threshold
+pub const EPSILON_VELOCITY: f64 = 1e-6;          // Minimum velocity threshold
+pub const EPSILON_ECCENTRICITY: f64 = 1e-8;      // Minimum eccentricity threshold
+pub const EPSILON_NODE: f64 = 1e-8;              // Minimum ascending node vector threshold
+// pub const EPSILON_ENERGY: f64 = 1e-9;         // Minimum specific orbital energy threshold
+// pub const EPSILON_MATH_DENOMINATOR: f64 = 1e-12; // Minimum math denominator threshold
+// pub const EPSILON_GRAVITY_DISTANCE: f64 = 1e-9;  // Minimum gravity distance threshold
 
-// --- 开普勒轨道方程迭代参数 ---
-pub const MAX_NEWTON_ITERATIONS: usize = 10;     // 椭圆轨道牛顿迭代最大次数
-pub const MAX_KEPLER_ITERATIONS: usize = 15;     // 双曲线轨道方程迭代最大次数
-// pub const HYPERBOLIC_M_THRESHOLD: f64 = 50.0;    // 双曲线平近点角阈值界限
-pub const HYPERBOLIC_E_CLAMP: f64 = 150.0;       // 双曲线偏近点角裁剪界限
-pub const HYPERBOLIC_CONVERGENCE: f64 = 1e-7;    // 双曲线迭代收敛判定阈值
+// --- Kepler equation iteration parameters ---
+pub const MAX_NEWTON_ITERATIONS: usize = 10;     // Max Newton iterations for elliptic orbits
+pub const MAX_KEPLER_ITERATIONS: usize = 15;     // Max iterations for hyperbolic Kepler equation
+// pub const HYPERBOLIC_M_THRESHOLD: f64 = 50.0;  // Hyperbolic mean anomaly threshold
+pub const HYPERBOLIC_E_CLAMP: f64 = 150.0;       // Hyperbolic eccentric anomaly clamp bound
+pub const HYPERBOLIC_CONVERGENCE: f64 = 1e-7;    // Hyperbolic iteration convergence threshold
 
-// --- 预测管线与积分器参数 ---
-pub const MAX_PREDICT_STEPS: usize = 15000;      // 轨道预测最大推演步数
-pub const MAX_PATCHES: usize = 24;               // 最大允许的圆锥曲线拼接段数
-// pub const PHYSICS_SUBSTEPS: u32 = 200;           // 引擎每帧执行的物理子步数
-pub const MAX_SAFE_DT: f64 = 100000.0;           // 射线步进算法最大允许时间跨度
-// pub const MIN_REL_VELOCITY: f64 = 0.01;          // 相对速度极小值保护
-// pub const ORBIT_DT_DIVISOR: f64 = 50.0;          // 轨道基础步长分割比例
-// pub const SAFE_DT_PADDING: f64 = 0.05;           // 安全时间步长填充余量
-// pub const MIN_DT_CLAMP: f64 = 0.01;              // 时间跨度最小钳制值
+// --- Prediction pipeline & integrator parameters ---
+pub const MAX_PREDICT_STEPS: usize = 15000;      // Max orbit prediction steps
+pub const MAX_PATCHES: usize = 24;               // Max patched conic segments
+// pub const PHYSICS_SUBSTEPS: u32 = 200;         // Physics sub-steps per frame
+pub const MAX_SAFE_DT: f64 = 100000.0;           // Max safe time span for ray marching
+// pub const MIN_REL_VELOCITY: f64 = 0.01;        // Minimum relative velocity guard
+// pub const ORBIT_DT_DIVISOR: f64 = 50.0;        // Orbit base step divisor ratio
+// pub const SAFE_DT_PADDING: f64 = 0.05;         // Safe time-step padding margin
+// pub const MIN_DT_CLAMP: f64 = 0.01;            // Minimum time-step clamp

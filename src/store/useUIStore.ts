@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 
+/** UI-only state: selection, modals, language, and camera focus mode */
 interface UIState {
   selectedBodyId: number | null;
   isCameraTransitioning: boolean;
   isAddModalOpen: boolean;
   language: string;
   isSettingsWindowOpen: boolean;
+  /** JUMP = instant snap to target; TRACK = continuous follow */
   focusMode: 'JUMP' | 'TRACK';
 
   setSelectedBody: (id: number | null) => void;

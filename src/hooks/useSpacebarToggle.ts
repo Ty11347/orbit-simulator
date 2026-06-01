@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useEngineStore } from '../store/useEngineStore';
 
-// 全局空格键监听器，包含输入框防误触机制
+// Global spacebar listener with input-focus guard
 export function useSpacebarToggle() {
   const togglePause = useEngineStore(state => state.togglePause);
 
@@ -10,14 +10,14 @@ export function useSpacebarToggle() {
       if (e.code === 'Space') {
         const activeTag = document.activeElement?.tagName;
         
-        // 处于输入状态时，不拦截空格键
+        // Do not intercept spacebar when an input is focused
         if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
           return;
         }
 
         e.preventDefault();
 
-        // 强行移除当前霸占焦点的 UI 元素（如下拉菜单）
+        // Force-blur any UI element currently holding focus (e.g. dropdowns)
         if (document.activeElement instanceof HTMLElement) {
           document.activeElement.blur();
         }

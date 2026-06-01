@@ -7,12 +7,12 @@ export function TimeControlBar() {
   const { t } = useTranslation();
   const [inputValue, setInputValue] = useState(timeScale.toString());
 
-  // 确保输入框内容与全局状态同步
+  // Keep input field in sync with global state
   useEffect(() => {
     setInputValue(timeScale.toString());
   }, [timeScale]);
 
-  // 处理输入框内容提交逻辑
+  // Handle input submission logic
   const handleScaleSubmit = () => {
     let val = parseFloat(inputValue);
     if (isNaN(val) || val < 0) val = 1;
@@ -22,7 +22,7 @@ export function TimeControlBar() {
 
     setInputValue(val.toString());
 
-    // 判断输入值是否属于预设梯度
+    // Check if the input value matches a preset tier
     const matchedIndex = TIME_TIERS.indexOf(val);
     if (matchedIndex !== -1) setTimeTierIndex(matchedIndex);
     else setCustomTimeScale(val);
@@ -35,7 +35,7 @@ export function TimeControlBar() {
   return (
     <div className="ksp-time-bar floating-panel" style={{ flexDirection: 'row' }}>
       <button className={`play-pause-square ${isPaused ? 'paused' : 'playing'}`} onClick={togglePause}>
-        {isPaused ? t('ui.time.pause') : t('ui.time.play')}
+        {isPaused ? '▶' : '⏸'}
       </button>
 
       <div className="warp-triangles">

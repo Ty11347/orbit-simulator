@@ -1,6 +1,7 @@
 // src/store/useEngineStore.ts
 import { create } from 'zustand';
 
+// Dynamically load all star system JSON config files
 const rawDataModules = import.meta.glob('../data/*.json', { eager: true });
 
 const defaultSystemKey = Object.keys(rawDataModules)[0];
@@ -8,6 +9,7 @@ const defaultSolarSystem = defaultSystemKey
   ? (rawDataModules[defaultSystemKey] as any).default
   : [];
 
+// Map of available star system presets by filename key
 export const AVAILABLE_SYSTEMS: Record<string, any> = {};
 
 Object.keys(rawDataModules).forEach((path) => {
@@ -15,6 +17,7 @@ Object.keys(rawDataModules).forEach((path) => {
   AVAILABLE_SYSTEMS[fileName] = (rawDataModules[path] as any).default;
 });
 
+/** Orbital elements and physical properties of a celestial body or spacecraft */
 export interface CelestialBody {
   id: number;
   name: string;
@@ -23,13 +26,14 @@ export interface CelestialBody {
   isStar?: boolean;
   type: 'STAR' | 'PLANET' | 'SATELLITE' | 'VEHICLE';
 
+  // Keplerian orbital elements
   MASS: number;
-  SMA: number;
-  ECC: number;
-  INC: number;
-  LAN: number;
-  AOP: number;
-  M0: number;
+  SMA: number;    // Semi-major axis (m)
+  ECC: number;    // Eccentricity
+  INC: number;    // Inclination (rad)
+  LAN: number;    // Longitude of ascending node (rad)
+  AOP: number;    // Argument of periapsis (rad)
+  M0: number;     // Mean anomaly at epoch (rad)
   parentId: number;
   soiRadius: number;
   isBurning?: boolean;
@@ -67,6 +71,7 @@ export const useEngineStore = create<EngineState>((set) => ({
   nextId: Math.max(...(defaultSolarSystem as CelestialBody[]).map((b: CelestialBody) => b.id), 0) + 1,
   systemVersion: 0,
 
+  // --- Time control ---
   setTimeTierIndex: (index) => set({
     timeTierIndex: index,
     timeScale: TIME_TIERS[index],
@@ -79,6 +84,7 @@ export const useEngineStore = create<EngineState>((set) => ({
 
   togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
 
+  // --- Body mutation ---
   toggleBurn: (id) => set((state) => ({
     bodies: state.bodies.map(b => b.id === id ? { ...b, isBurning: !b.isBurning } : b),
   })),
@@ -89,6 +95,7 @@ export const useEngineStore = create<EngineState>((set) => ({
     systemVersion: state.systemVersion + 1,
   })),
 
+  // Cascade-delete: removing a body also removes all its children recursively
   deleteBody: (targetId) => {
     let deletedSelectedId: number | null = null;
     set((state) => {
@@ -111,12 +118,14 @@ export const useEngineStore = create<EngineState>((set) => ({
     return deletedSelectedId;
   },
 
+  // --- System loading ---
   loadSystem: (newBodies) => set((state) => ({
     bodies: newBodies,
     nextId: Math.max(...newBodies.map(b => b.id), 0) + 1,
     systemVersion: state.systemVersion + 1,
   })),
 
+  // Bulk-update parent and Keplerian parameters after SOI transitions
   syncBodyParent: (updates) => set((state) => {
     if (updates.length === 0) return state;
     const updateMap = new Map(updates.map(u => [u.id, u]));
@@ -129,6 +138,7 @@ export const useEngineStore = create<EngineState>((set) => ({
     };
   }),
 
+  // --- WASM engine data bridge ---
   engineData: { posPtr: 0, velPtr: 0, localVelPtr: 0, parentPtr: 0, count: 0, memory: null },
   setEngineData: (data) => set({ engineData: data }),
 }));

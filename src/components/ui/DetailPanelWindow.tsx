@@ -51,7 +51,7 @@ export function DetailPanelWindow() {
     if (parentBody) {
       w(refs.velName, `${i18n.velocity} (${t(parentBody.name)})`);
 
-      // 静态天体（非载具）直接用 JSON 中存储的 Kepler 参数，免除每帧浮点反推误差
+      // Static bodies (non-vehicle) use the Kepler parameters stored in JSON directly, avoiding per-frame floating-point back-computation drift
       if (selBody && selBody.type !== 'VEHICLE') {
         const sma = selBody.SMA;
         const ecc = selBody.ECC;
@@ -90,7 +90,7 @@ export function DetailPanelWindow() {
 
     let frameId: number;
 
-    // 挂载时立即同步写入：若遥测已缓存且匹配当前天体，零延迟填充，消除首次 mount 的空→数据闪动
+    // Immediate sync on mount: if telemetry is cached and matches the current body, fill with zero latency to eliminate first-mount flash from empty to data
     const cached = telemetryRef.current;
     if (cached && cached.bodyId === selectedBodyId) {
       const sel = useEngineStore.getState().bodies.find((b: any) => b.id === selectedBodyId);

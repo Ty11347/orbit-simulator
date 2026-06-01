@@ -6,7 +6,7 @@ import { RENDER_SCALE } from './SolarSystem';
 import { physicsToRender } from '../utils/coords';
 
 // =========================================================================
-// 全局轨道渲染配置常量
+// Global orbit rendering configuration
 // =========================================================================
 const ORBIT_CONFIG = {
   DEFAULT_SEGMENTS: 300,
@@ -31,7 +31,7 @@ export interface OrbitPathHelperProps {
 }
 
 // =========================================================================
-// 基础组件：静态开普勒轨道渲染器 (支持 SOI 精确数学裁剪)
+// Base component: static Keplerian orbit renderer (with SOI-accurate mathematical clipping)
 // =========================================================================
 export function OrbitPathHelper({
   SMA,
@@ -41,10 +41,10 @@ export function OrbitPathHelper({
   AOP,
   color = ORBIT_CONFIG.COLOR_DEFAULT,
   segments = ORBIT_CONFIG.DEFAULT_SEGMENTS,
-  soi = Infinity // 默认无限制（中心恒星）
+  soi = Infinity // Default: no limit (central star)
 }: OrbitPathHelperProps) {
 
-  // 一次性在内存中申请够Vector3，避免轨道动态刷新导致每秒生成上万个Vector3撑爆GC
+  // Pre-allocate Vector3 pool in memory to avoid generating tens of thousands of objects per second during orbit refresh and overwhelming GC
   const pointsPool = useRef(
     Array.from({ length: segments + 1 }, () => new THREE.Vector3())
   );
@@ -52,38 +52,38 @@ export function OrbitPathHelper({
   const points = useMemo(() => {
     const isHyperbola = ECC >= 1.0;
 
-    const absA = Math.abs(SMA) / RENDER_SCALE; // 渲染尺寸
-    const realAbsA = Math.abs(SMA); // 真实物理尺寸，用于对比 SOI
+    const absA = Math.abs(SMA) / RENDER_SCALE; // Render scale
+    const realAbsA = Math.abs(SMA); // Real physical size for SOI comparison
 
-    // 近点距离 (无论椭圆还是双曲线都适用)
+    // Periapsis distance (valid for both ellipse and hyperbola)
     const periapsis = realAbsA * Math.abs(1 - ECC);
 
-    // 🛡️ 极端情况拦截：如果近点都已经超出了 SOI，说明轨道完全在球外，一根线都不要画！
+    // Edge case guard: if periapsis is already outside the SOI, the entire orbit lies outside — draw nothing
     if (periapsis > soi) return [];
 
-    // 计算允许渲染的最大角度界限 (Limit)
-    let eLimit = Math.PI; // 默认椭圆画整圈 (E 从 -π 到 +π)
-    let fLimit = ORBIT_CONFIG.HYPERBOLA_LIMIT; // 默认双曲线限制长度
+    // Compute the maximum allowed angular bounds for rendering
+    let eLimit = Math.PI; // Default: full ellipse (E from -π to +π)
+    let fLimit = ORBIT_CONFIG.HYPERBOLA_LIMIT; // Default: hyperbola length limit
 
     if (!isHyperbola) {
       if (ECC > 0.0001) {
-        // 解算椭圆与 SOI 边界的交点: r = a(1 - e*cosE) => cosE = (a - r) / ae
+        // Solve ellipse-SOI boundary intersection: r = a(1 - e*cosE) => cosE = (a - r) / ae
         const cosE = (realAbsA - soi) / (realAbsA * ECC);
         if (cosE >= -1 && cosE <= 1) {
-          eLimit = Math.acos(cosE); // 算出交点的 E 角！
+          eLimit = Math.acos(cosE); // Eccentric anomaly at intersection
         } else if (cosE > 1) {
-          return []; // 再次兜底防御：完全在 SOI 外
+          return []; // Redundant guard: entirely outside SOI
         }
-        // 若 cosE < -1，说明远点也在 SOI 内，保持 eLimit = Math.PI 画全圈
+        // If cosE < -1 the apoapsis is also inside SOI; keep eLimit = Math.PI to draw full circle
       } else {
-        // 绝对圆轨道的特判
+        // Special case: perfectly circular orbit
         if (realAbsA > soi) return [];
       }
     } else {
-      // 解算双曲线与 SOI 边界的交点: r = a(e*coshF - 1) => coshF = (r + a) / ae
+      // Solve hyperbola-SOI boundary intersection: r = a(e*coshF - 1) => coshF = (r + a) / ae
       const coshF = (soi + realAbsA) / (realAbsA * ECC);
       if (coshF >= 1) {
-        // 如果与 SOI 边界相交，则在双曲线长度界限和交点之间取最小值
+        // If intersecting the SOI boundary, take the minimum of the hyperbola length limit and the intersection
         fLimit = Math.min(ORBIT_CONFIG.HYPERBOLA_LIMIT, Math.acosh(coshF));
       }
     }
@@ -120,7 +120,7 @@ export function OrbitPathHelper({
     return pts.slice(0, validCount);
   }, [SMA, ECC, INC, LAN, AOP, segments, soi]);
 
-  // 如果点集为空（即该轨道段在作用球外），则不渲染任何元素
+  // If the point set is empty (i.e. this orbit segment lies outside the SOI), render nothing
   if (points.length === 0) return null;
 
   return (
@@ -129,7 +129,7 @@ export function OrbitPathHelper({
 }
 
 // =========================================================================
-// 复合组件：动态多段轨道预测管线渲染器
+// Composite component: dynamic multi-segment orbit prediction pipeline renderer
 // =========================================================================
 interface DynamicOrbitPathProps {
   patches?: Float64Array;
@@ -155,7 +155,7 @@ export function DynamicOrbitPath({ patches, color = ORBIT_CONFIG.COLOR_PREDICT_C
 
     const segmentColor = i === 0 ? color : ORBIT_CONFIG.COLOR_PREDICT_FUTURE;
 
-    // 动态提取这一段轨道所处的父天体 SOI
+    // Dynamically extract the parent body SOI for this orbit segment
     const parentBody = bodies.find(b => b.id === parentId);
     const activeSoi = parentBody && parentBody.soiRadius > 0 ? parentBody.soiRadius : Infinity;
 

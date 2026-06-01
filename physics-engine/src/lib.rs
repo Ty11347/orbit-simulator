@@ -1,5 +1,10 @@
 mod constants;
 
+//! Patched Conic Approximation physics engine compiled to WebAssembly.
+//!
+//! Provides analytical Kepler equation solving, SOI transition detection,
+//! and multi-segment orbit prediction for n-body orbital mechanics simulation.
+
 use constants::*;
 use wasm_bindgen::prelude::*;
 
@@ -175,7 +180,7 @@ impl PhysicsEngine {
         let (x1, y1, z1, vx1, vy1, vz1) = self.compute_analytical(idx1, t);
         let (x2, y2, z2, vx2, vy2, vz2) = self.compute_analytical(idx2, t);
         let dx = x1 - x2; let dy = y1 - y2; let dz = z1 - z2;
-        let dvx = vx1 - vx2; let dvy = vy1 - vy2; let dvz = vz1 - vz2; // 修复了这里拼写错误
+        let dvx = vx1 - vx2; let dvy = vy1 - vy2; let dvz = vz1 - vz2; // Fixed typo in variable name
         dx*dvx + dy*dvy + dz*dvz
     }
 
@@ -397,7 +402,7 @@ impl PhysicsEngine {
         let cos_nu = (p / parent_soi - 1.0) / e;
         
         if cos_nu > 1.0 + 1e-5 { return None; } 
-        // 🚨 这里就是修复瞬移 Bug 最关键的防线！远地点都不出球的轨道直接拒绝！
+        // Critical guard against teleportation bug — reject orbits whose apoapsis never leaves the SOI
         if cos_nu < -1.0 - 1e-5 { return None; }
         
         let cos_nu_clamped = cos_nu.clamp(-1.0, 1.0);
@@ -537,6 +542,7 @@ impl PhysicsEngine {
     }
 }
 
+/// WASM-facing public API for the physics engine.
 #[wasm_bindgen]
 impl PhysicsEngine {
     #[wasm_bindgen(constructor)]

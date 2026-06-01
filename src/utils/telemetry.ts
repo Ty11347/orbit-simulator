@@ -1,22 +1,25 @@
+/** Real-time telemetry snapshot for a single celestial body */
 export interface TelemetryData {
   bodyId: number;
   px: number;
   py: number;
   pz: number;
   speed: number;
-  sma: number;
-  ecc: number;
-  peAlt: number;
-  apAlt: number;
-  alt: number;
-  period: number;
+  sma: number;     // Semi-major axis (m)
+  ecc: number;     // Eccentricity
+  peAlt: number;   // Periapsis altitude (m above surface)
+  apAlt: number;   // Apoapsis altitude (m above surface)
+  alt: number;     // Current altitude (m above surface)
+  period: number;  // Orbital period (s)
   parentId: number;
 }
 
+/** Mutable ref holding the latest telemetry data for the detail panel to poll */
 export const telemetryRef: { current: TelemetryData | null } = { current: null };
 
 const G = 6.67430e-11;
 
+/** Compute telemetry from WASM memory buffers for a given body index */
 export function computeTelemetry(
   bodyIndex: number,
   engineData: { posPtr: number; velPtr: number; localVelPtr: number; parentPtr: number; count: number; memory: WebAssembly.Memory | null },
@@ -84,6 +87,7 @@ export function computeTelemetry(
   return { bodyId: bodies[bodyIndex].id, px, py, pz, speed, sma, ecc, peAlt, apAlt, alt, period, parentId: currentParentId };
 }
 
+/** Reset telemetry ref to null (called on system reload to prevent stale data) */
 export function clearTelemetry() {
   telemetryRef.current = null;
 }

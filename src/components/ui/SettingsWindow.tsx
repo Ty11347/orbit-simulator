@@ -3,7 +3,7 @@ import { useUIStore } from '../../store/useUIStore';
 import { useTranslation, AVAILABLE_LANGUAGES } from '../../hooks/useTranslation';
 import { useNativeDrag } from '../../hooks/useNativeDrag';
 
-// 全局设置悬浮窗组件
+// Global settings floating window component
 export function SettingsWindow() {
   const { t, language } = useTranslation();
   const loadSystem = useEngineStore(state => state.loadSystem);

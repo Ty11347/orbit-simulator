@@ -4,14 +4,14 @@ import { useUIStore } from '../../store/useUIStore';
 import { useTranslation } from '../../hooks/useTranslation';
 import { useNativeDrag } from '../../hooks/useNativeDrag';
 
-// 添加新天体/飞船的交互面板
+// Panel for adding new celestial bodies / spacecraft
 export function AddEntityWindow() {
   const { addBody, bodies } = useEngineStore();
   const { isAddModalOpen, setAddModalOpen } = useUIStore();
   const { t } = useTranslation();
   const panelRef = useNativeDrag(isAddModalOpen);
 
-  // 集中管理表单状态
+  // Centralized form state
   const [name, setName] = useState('');
   const [type, setType] = useState<'PLANET' | 'SATELLITE' | 'VEHICLE'>('VEHICLE');
   const [parentId, setParentId] = useState(1);
@@ -22,9 +22,9 @@ export function AddEntityWindow() {
 
   if (!isAddModalOpen) return null;
 
-  // 处理实体发射逻辑
+  // Handle entity launch logic
   const handleAdd = () => {
-    // 确保父节点存在，否则回退到中心天体
+    // Ensure parent exists, fall back to central body
     const actualParentId = bodies.some(b => b.id === parentId) ? parentId : bodies[0].id;
     
     addBody({

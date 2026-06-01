@@ -3,17 +3,17 @@ import { useEngineStore } from '../../store/useEngineStore';
 import { useUIStore } from '../../store/useUIStore';
 import { useTranslation } from '../../hooks/useTranslation';
 
-// 左侧实体导航面板
+// Left-side entity navigation panel
 export function SidebarPanel() {
   const { bodies, deleteBody } = useEngineStore();
   const { selectedBodyId, setSelectedBody, setAddModalOpen, setFocusMode } = useUIStore();
   const { t } = useTranslation();
   
-  // 组件状态管理
+  // Component state
   const [activeTab, setActiveTab] = useState<'ENTITIES' | 'VEHICLES'>('ENTITIES');
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // 根据标签页过滤显示列表
+  // Filter display list by active tab
   const displayList = bodies.filter(b => {
     if (activeTab === 'ENTITIES') return b.type !== 'VEHICLE';
     if (activeTab === 'VEHICLES') return b.type === 'VEHICLE';

@@ -1,6 +1,6 @@
 import { useUIStore } from '../store/useUIStore';
 
-// 动态扫描所有语言包
+// Dynamically scan all locale files
 const rawLocales = import.meta.glob('../locales/*.json', { eager: true });
 
 const dictionaries: Record<string, Record<string, string>> = {};

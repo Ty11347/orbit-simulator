@@ -2,19 +2,19 @@ import { useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { OrbitPathHelper, DynamicOrbitPath } from './OrbitPathHelper';
 
-// 配置常量
+// Configuration constants
 const CONFIG = {
-  PREDICTION_THROTTLE_FRAMES: 15 // 飞船轨道预测的更新间隔帧数，用于优化性能
+  PREDICTION_THROTTLE_FRAMES: 15 // Frame interval for spacecraft orbit prediction updates (performance optimization)
 };
 
 export function SolarSystemHelpers({ bodies, helperRefs, meshRefs, engine }: any) {
   return (
     <group>
       {bodies.map((body: any, i: number) => {
-        // 忽略中心天体的轨道渲染
+        // Skip orbit rendering for the central body
         if (body.parentId === -1) return null;
         
-        // 核心修复：找到当前天体的父天体，获取它的引力作用球大小
+        // Find the current body's parent to obtain its SOI radius
         const parentBody = bodies.find((b: any) => b.id === body.parentId);
         const activeSoi = parentBody && parentBody.soiRadius > 0 ? parentBody.soiRadius : Infinity;
 
@@ -26,7 +26,7 @@ export function SolarSystemHelpers({ bodies, helperRefs, meshRefs, engine }: any
                 rustIdx={i} 
                 engine={engine} 
                 meshRefs={meshRefs} 
-                bodies={bodies} // 核心修复：将星体数据透传给预测器
+                bodies={bodies} // Pass body data through to the predictor
               />
             ) : (
               <OrbitPathHelper 
@@ -36,7 +36,7 @@ export function SolarSystemHelpers({ bodies, helperRefs, meshRefs, engine }: any
                 LAN={body.LAN} 
                 AOP={body.AOP} 
                 color={body.color} 
-                soi={activeSoi} // 核心修复：传入 SOI 半径进行数学裁剪
+                soi={activeSoi} // Pass SOI radius for mathematical clipping
               />
             )}
           </group>
@@ -46,7 +46,7 @@ export function SolarSystemHelpers({ bodies, helperRefs, meshRefs, engine }: any
   );
 }
 
-// 独立的预测计算孤岛组件
+// Isolated prediction computation island component
 function VehiclePredictor({ body, rustIdx, engine, meshRefs, bodies }: any) {
   const [patches, setPatches] = useState<Float64Array | null>(null);
   const frameCount = useRef(0);
@@ -54,7 +54,7 @@ function VehiclePredictor({ body, rustIdx, engine, meshRefs, bodies }: any) {
   useFrame(() => {
     frameCount.current++;
     
-    // 降频执行轨道推演，优化高倍数时间加速时的运算开销
+    // Throttled orbit projection to reduce compute cost at high time-warp
     if (frameCount.current % CONFIG.PREDICTION_THROTTLE_FRAMES === 0) {
       const newPatches = engine.predict_patches(rustIdx);
       
@@ -69,6 +69,6 @@ function VehiclePredictor({ body, rustIdx, engine, meshRefs, bodies }: any) {
 
   if (!patches || patches.length === 0) return null;
   
-  // 核心修复：将 bodies 传递给下级动态轨道渲染器
+  // Pass bodies to the downstream dynamic orbit renderer
   return <DynamicOrbitPath patches={patches} color={body.color} meshRefs={meshRefs} bodies={bodies} />;
 }

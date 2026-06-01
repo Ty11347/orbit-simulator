@@ -9,24 +9,24 @@ import { physicsToRenderVec3 } from '../utils/coords';
 import { computeTelemetry, clearTelemetry, telemetryRef } from '../utils/telemetry';
 import { useCameraTracking } from '../hooks/useCameraTracking';
 
-// 全局渲染比例常数
-export const RENDER_SCALE = 1e6; // 1 WebGL 渲染单位 = 1000 公里 (10^6 米)
+// Global render scale constant
+export const RENDER_SCALE = 1e6; // 1 WebGL unit = 1000 km (1e6 meters)
 
 const VEHICLE_RENDER_RADIUS = 0.05;
 
 export function SolarSystem() {
-  // --- 全局状态 ---
+  // --- Global state ---
   const bodies = useEngineStore(state => state.bodies);
   const systemVersion = useEngineStore(state => state.systemVersion);
   const setEngineData = useEngineStore(state => state.setEngineData);
   const selectedBodyId = useUIStore(state => state.selectedBodyId);
   const setSelectedBody = useUIStore(state => state.setSelectedBody);
 
-  // --- 局部状态 ---
+  // --- Local state ---
   const [engine, setEngine] = useState<PhysicsEngine | null>(null);
   const [wasmMemory, setWasmMemory] = useState<WebAssembly.Memory | null>(null);
 
-  // --- 引用定义 ---
+  // --- Refs ---
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
   const helperRefs = useRef<(THREE.Group | null)[]>([]);
   const engineDataInitialized = useRef(false);
@@ -36,7 +36,7 @@ export function SolarSystem() {
 
   const updateCamera = useCameraTracking(meshRefs);
 
-  // 初始化物理引擎
+  // Initialize physics engine
   useEffect(() => {
     async function loadEngine() {
       const wasm = await init();
@@ -47,14 +47,14 @@ export function SolarSystem() {
     loadEngine();
   }, []);
 
-  // 同步天体数据到物理引擎
+  // Sync body data to the physics engine
   useEffect(() => {
     if (!engine || !wasmMemory) return;
 
     engine.clear();
     const idToRustIndex = new Map<number, number>();
 
-    // 按拓扑深度排序：确保父天体总是在子天体之前注册，防止 Rust 侧 assert 崩溃
+    // Topological sort by depth: ensures parents are registered before children to prevent Rust-side assertion failure
     const computeDepth = (id: number, depthMap: Map<number, number>): number => {
       if (depthMap.has(id)) return depthMap.get(id)!;
       const body = bodies.find(b => b.id === id);
@@ -75,31 +75,31 @@ export function SolarSystem() {
       idToRustIndex.set(b.id, rustIdx);
     });
 
-    // 强制下一帧刷新 engineData 指针，避免遥测读到已失效的旧内存
+    // Force engineData pointer refresh next frame to prevent telemetry from reading stale memory
     engineDataInitialized.current = false;
-    // 清空遥测残值，确保面板等待新引擎数据就绪后再渲染
+    // Clear residual telemetry so the panel waits for fresh engine data before rendering
     clearTelemetry();
-    // 标记引擎已与当前 systemVersion 同步
+    // Mark engine as synchronized with current systemVersion
     lastStableSystemVersion.current = systemVersion;
   }, [systemVersion, engine, wasmMemory]);
 
   useFrame((state, delta) => {
     const { timeScale, isPaused } = useEngineStore.getState();
 
-    // ================= 1. 物理推进与网格坐标同步 =================
+    // ================= 1. Physics Stepping & Mesh Coordinate Sync =================
     if (engine && wasmMemory && !isPaused) {
-      // 同步飞船引擎点火状态
+      // Sync spacecraft engine burn state
       bodies.forEach((b, i) => {
         if (b.type === 'VEHICLE') {
           engine.set_burning(i, !!b.isBurning);
         }
       });
 
-      // 现在的引擎是纯解析方程求根，免疫穿模，我们直接给它喂”绝对宇宙时间”！
+      // Pure analytical equation root-finding -- immune to clipping. Feed it absolute universe time directly.
       universeTime.current += delta * timeScale;
       engine.update_to_time(universeTime.current);
 
-      // ================= 1a. 刷新引擎指针（必须在遥测计算之前，避免读到失效内存） =================
+      // ================= 1a. Refresh engine pointers (must precede telemetry to avoid stale memory reads) =================
       const posPtr = engine.get_positions_ptr();
       const count = engine.get_bodies_count();
       if (!engineDataInitialized.current || prevBodyCount.current !== count) {
@@ -115,10 +115,10 @@ export function SolarSystem() {
         prevBodyCount.current = count;
       }
 
-      // ================= 1b. 遥测数据更新（仅在引擎与 store 状态严格一致时执行） =================
+      // ================= 1b. Telemetry update (only when engine & store state are strictly consistent) =================
       const currentSystemVersion = useEngineStore.getState().systemVersion;
       const currentBodies = useEngineStore.getState().bodies;
-      // 三重校验：版本匹配 + 引擎已初始化 + WASM 天体数与 JS 一致（防止索引错位读取错误天体的数据）
+      // Triple check: version match + engine initialized + WASM body count equals JS count (prevents index misalignment from reading wrong body data)
       if (currentSystemVersion === lastStableSystemVersion.current
           && engineDataInitialized.current
           && engine.get_bodies_count() === currentBodies.length) {
@@ -136,7 +136,7 @@ export function SolarSystem() {
 
       const posView = new Float64Array(wasmMemory.buffer, posPtr, count * 3);
 
-      // 同步 3D 渲染网格的坐标
+      // Sync 3D mesh positions
       bodies.forEach((body, i) => {
         const mesh = meshRefs.current[body.id];
         if (mesh) {
@@ -146,7 +146,7 @@ export function SolarSystem() {
           );
         }
         
-        // 同步辅助元素（如轨道线）的位置到父天体中心
+        // Sync auxiliary element (e.g. orbit lines) positions to parent body center
         if (body.parentId !== -1 && helperRefs.current[body.id]) {
           if (body.type !== 'VEHICLE') {
             const parentMesh = meshRefs.current[body.parentId];
@@ -158,7 +158,7 @@ export function SolarSystem() {
       });
     }
 
-    // ================= 2. SOI 过渡后同步父天体与轨道参数 =================
+    // ================= 2. Post-SOI-Transition Parent & Kepler Sync =================
     if (engine && wasmMemory && engineDataInitialized.current) {
       const syncCount = engine.get_bodies_count();
       const parentView = new Int32Array(wasmMemory.buffer, engine.get_parents_ptr(), syncCount);
@@ -186,7 +186,7 @@ export function SolarSystem() {
       }
     }
 
-    // ================= 3. 智能相机调度与平滑运镜系统 =================
+    // ================= 3. Smart Camera Scheduling & Smooth Tracking =================
     const currentFocusMode = useUIStore.getState().focusMode;
     updateCamera(state, selectedBodyId, bodies, currentFocusMode);
   });
