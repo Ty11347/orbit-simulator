@@ -19,7 +19,7 @@ An orbital mechanics sandbox simulator based on the **Patched Conic Approximatio
 - **Realistic Orbital Mechanics** — Analytical solutions to Kepler's equation (elliptic / parabolic / hyperbolic), with precise gravitational constant G computation
 - **SOI Boundary Crossing** — Automatic detection and handling of Sphere of Influence transition events, using Brent's method for precise root-finding
 - **Orbit Prediction** — Multi-segment Patched Conic path projection for spacecraft, with future orbit visualization
-- **Spacecraft Maneuvers** — Engine thrust on/off, with dynamic switching between analytical mode and numerical integration
+- **[WIP] Spacecraft Maneuvers** — ~~Engine thrust on/off~~, with dynamic switching between analytical mode and numerical integration
 - **3D Visualization** — React Three Fiber-based celestial body rendering, orbit line drawing, and free camera control
 - **Time Control** — Pausable, with multi-level time acceleration from 0.1× to 1,000,000×
 - **Entity Management** — Dynamically add / remove planets, moons, and spacecraft, with custom orbital parameters
