@@ -21,7 +21,7 @@ An orbital mechanics sandbox simulator based on the **Patched Conic Approximatio
 - **Orbit Prediction** — Multi-segment Patched Conic path projection for spacecraft, with future orbit visualization
 - **Spacecraft Maneuvers** — Engine thrust on/off, with dynamic switching between analytical mode and numerical integration
 - **3D Visualization** — React Three Fiber-based celestial body rendering, orbit line drawing, and free camera control
-- **Time Control** — Pause / play, with multi-level time acceleration from 0.1× to 1,000,000×
+- **Time Control** — Pausable, with multi-level time acceleration from 0.1× to 1,000,000×
 - **Entity Management** — Dynamically add / remove planets, moons, and spacecraft, with custom orbital parameters
 - **Telemetry Panel** — Real-time display of selected body's position, velocity, and Keplerian elements (SMA / ECC / Pe / Ap / Period)
 - **Bilingual UI** — Chinese / English toggle
